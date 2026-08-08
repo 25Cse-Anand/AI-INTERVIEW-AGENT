@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, User, Mail, ArrowRight, Lock, Shield, Zap, Star, Sparkles, Key, CheckCircle2 } from 'lucide-react';
-import { setGeminiApiKey, getGeminiApiKey } from '../services/geminiService';
+import { Bot, User, Mail, ArrowRight, Lock, Shield, Zap, Star, Sparkles, CheckCircle2 } from 'lucide-react';
 
 const TESTIMONIALS = [
   {
@@ -42,8 +41,7 @@ export default function LoginPage({ onLogin }) {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    role: '',
-    apiKey: getGeminiApiKey() || 'AIzaSyBC7uH-FudjOlrM6xd85kQHsB0LsohXJLY'
+    role: ''
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -119,17 +117,12 @@ export default function LoginPage({ onLogin }) {
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
 
-    // Configure Gemini API key globally
-    const activeKey = form.apiKey.trim() || 'AIzaSyBC7uH-FudjOlrM6xd85kQHsB0LsohXJLY';
-    setGeminiApiKey(activeKey);
-
     setIsLoading(true);
     setTimeout(() => {
       onLogin({
         name: form.name.trim(),
         email: form.email.trim(),
-        role: form.role,
-        apiKey: activeKey
+        role: form.role
       });
     }, 900);
   };
@@ -261,27 +254,6 @@ export default function LoginPage({ onLogin }) {
                 />
               </div>
               {errors.email && <span className="field-error">{errors.email}</span>}
-            </div>
-
-            {/* Gemini API Key - Pre-Integrated */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="login-api-key">
-                Gemini API Key <span className="text-emerald text-xs font-mono font-bold">✓ Pre-Integrated</span>
-              </label>
-              <div className="input-wrapper">
-                <Key size={16} className="input-icon text-cyan" />
-                <input
-                  id="login-api-key"
-                  type="password"
-                  className="form-input"
-                  placeholder="Pre-integrated Gemini Key (AIzaSy...)"
-                  value={form.apiKey}
-                  onChange={e => handleChange('apiKey', e.target.value)}
-                />
-              </div>
-              <span className="text-xs text-emerald flex items-center gap-1 mt-1 font-mono">
-                <CheckCircle2 size={12} /> Key active: AIzaSyBC7uH... (Gemini 3.5 / 2.0 Flash Lite)
-              </span>
             </div>
 
             {/* Role */}
