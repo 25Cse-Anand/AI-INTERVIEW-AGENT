@@ -36,7 +36,7 @@ export default function ResultPreviewModal({ isOpen, onClose, onProceed }) {
           </div>
           <h2 className="modal-title">What Your Final Report Will Look Like</h2>
           <p className="modal-subtitle">
-            After completing your 10–20 adaptive question session, you will receive an enterprise-grade structured assessment powered by <strong>Gemini 3.5 Flash Lite</strong>.
+            After completing your 8–20 adaptive question session, you will receive an enterprise-grade structured assessment powered by <strong>Enterprise AI Engine</strong>.
           </p>
         </div>
 
@@ -120,7 +120,7 @@ export default function ResultPreviewModal({ isOpen, onClose, onProceed }) {
                   <TrendingUp size={18} className="text-emerald" />
                 </div>
                 <div>
-                  <h4>Step-by-Step Gemini Analysis</h4>
+                  <h4>Step-by-Step AI Analysis</h4>
                   <p>Factual accuracy checks on every question with specific technical strengths & gaps highlighted.</p>
                 </div>
               </div>
@@ -152,7 +152,7 @@ export default function ResultPreviewModal({ isOpen, onClose, onProceed }) {
                 <ArrowRight size={20} />
               </button>
               <p className="text-xs text-dim text-center mt-2 flex items-center justify-center gap-1">
-                <ShieldCheck size={13} className="text-emerald" /> Free Assessment · Pre-Integrated Gemini 3.5 API · No Credit Card Required
+                <ShieldCheck size={13} className="text-emerald" /> Free Assessment · Pre-Integrated AI Engine · No Credit Card Required
               </p>
             </div>
           </div>

@@ -39,7 +39,9 @@ export default function StructuredFeedback({ feedback, onRestart }) {
           <div className="sf-hero-left">
             <div className="sf-emoji-large">{lm.emoji}</div>
             <div>
-              <div className="sf-sub-label font-mono">STRUCTURED TECHNICAL EVALUATION</div>
+              <div className="sf-sub-label font-mono">
+                {safeFeedback.roundType ? safeFeedback.roundType.toUpperCase() : 'STRUCTURED TECHNICAL EVALUATION'}
+              </div>
               <h1 className="sf-candidate-name">{safeFeedback.candidateName || 'Candidate'}</h1>
               <div className="sf-level-title" style={{ color: lm.color }}>
                 {dominantLevel.charAt(0) + dominantLevel.slice(1).toLowerCase()} Level Engineer
@@ -117,18 +119,18 @@ export default function StructuredFeedback({ feedback, onRestart }) {
 
         {/* ── Competency Breakdown ── */}
         <div className="sf-section mt-4">
-          <h3 className="sf-section-title"><Target size={17} className="text-amber" /><span>Technical Competency Breakdown</span></h3>
+          <h3 className="sf-section-title"><Target size={17} className="text-amber" /><span>AI Interview Analysis Metrics</span></h3>
           <div className="sf-metrics-grid">
             {[
-              { label: 'Conceptual Depth', val: (safeFeedback.scores && safeFeedback.scores.conceptualDepth) || 82, color: '#00F2FE', cls: 'fill-cyan' },
-              { label: 'Trade-off Awareness', val: (safeFeedback.scores && safeFeedback.scores.tradeoffAwareness) || 75, color: '#F59E0B', cls: 'fill-amber' },
-              { label: 'Engineering Clarity', val: (safeFeedback.scores && safeFeedback.scores.engineeringClarity) || 85, color: '#10B981', cls: 'fill-emerald' },
-              { label: 'Production Realism', val: (safeFeedback.scores && safeFeedback.scores.productionRealism) || 78, color: '#8B5CF6', cls: 'fill-violet' },
+              { label: 'Confidence', val: (safeFeedback.scores && safeFeedback.scores.confidence) || 72, color: '#00F2FE', cls: 'fill-cyan' },
+              { label: 'Technical Depth', val: (safeFeedback.scores && safeFeedback.scores.technicalDepth) || 55, color: '#10B981', cls: 'fill-emerald' },
+              { label: 'Reasoning', val: (safeFeedback.scores && safeFeedback.scores.reasoning) || 68, color: '#F59E0B', cls: 'fill-amber' },
+              { label: 'Communication', val: (safeFeedback.scores && safeFeedback.scores.communication) || 81, color: '#8B5CF6', cls: 'fill-violet' },
             ].map(m => (
               <div key={m.label} className="sf-metric-box">
                 <div className="sf-metric-row">
                   <span>{m.label}</span>
-                  <span className="font-mono" style={{ color: m.color }}>{m.val}%</span>
+                  <span className="font-mono font-bold" style={{ color: m.color }}>{m.val}%</span>
                 </div>
                 <div className="thin-track">
                   <div className={`thin-fill ${m.cls}`} style={{ width: `${m.val}%` }} />

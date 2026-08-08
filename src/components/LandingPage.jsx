@@ -11,7 +11,7 @@ const HERO_SLIDES = [
   },
   {
     url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80',
-    tag: 'REAL-TIME GEMINI STREAM',
+    tag: 'REAL-TIME AI STREAM',
     alt: 'Live Candidate Telemetry and Evaluation Dashboards'
   },
   {
@@ -122,7 +122,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
   const [chatMessages, setChatMessages] = useState([
     {
       sender: 'bot',
-      text: '👋 Hi there! I am your Gemini Flash AI Support Assistant. Facing any issue with interview setup, API keys, or cohort topics? Ask me anything!'
+      text: '👋 Hi there! I am your AI Support Assistant. Facing any issue with interview setup, API keys, or cohort topics? Ask me anything!'
     }
   ]);
   const [inputQuery, setInputQuery] = useState('');
@@ -158,7 +158,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
         ...prev,
         {
           sender: 'bot',
-          text: "I'm experiencing a brief connectivity glitch with the Gemini API, but you can proceed to Candidate Login to start your interview right away!"
+          text: "I'm experiencing a brief connectivity glitch with the AI Engine, but you can proceed to Candidate Login to start your interview right away!"
         }
       ]);
     } finally {
@@ -218,7 +218,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
           <div className="lp-hero-content animate-fade-in">
             <div className="lp-hero-pill font-mono">
               <Sparkles size={14} className="text-cyan pulse-sparkle" />
-              <span>POWERED BY GEMINI 3.5 FLASH LITE API</span>
+              <span>POWERED BY ADVANCED AI ENGINE</span>
             </div>
 
             {/* Live Typing Headline */}
@@ -263,7 +263,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
                   <span className="dot dot-amber" />
                   <span className="dot dot-green" />
                 </div>
-                <span className="font-mono text-xs text-dim">LIVE_GEMINI_EVALUATION_STREAM.AI</span>
+                <span className="font-mono text-xs text-dim">LIVE_AI_EVALUATION_STREAM.AI</span>
               </div>
 
               <div className="visual-card-image-wrap">
@@ -310,7 +310,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
                 </div>
                 <div className="visual-float-badge float-top-right font-mono">
                   <Zap size={14} className="text-cyan" />
-                  <span>Gemini 3.5 Active (0.4s)</span>
+                  <span>AI Engine Active (0.4s)</span>
                 </div>
 
                 <div className="visual-float-badge float-bottom-left font-mono">
@@ -329,7 +329,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
           <div className="lp-section-tag font-mono text-cyan">ENTERPRISE INTERVIEW INTELLIGENCE</div>
           <h2 className="lp-section-title">Built for Serious AI Engineers</h2>
           <p className="lp-section-subtitle">
-            Say goodbye to static quizzes. Experience pure open-ended text scenarios with live Gemini feedback and zero word limits.
+            Say goodbye to static quizzes. Experience pure open-ended text scenarios with live AI feedback and zero word limits.
           </p>
         </div>
 
@@ -426,7 +426,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
             <div className="ts-num font-mono">03</div>
             <div className="ts-content">
               <h4>Get Live Feedback & Career Roadmap</h4>
-              <p>Receive step-by-step Gemini feedback after every turn, culminating in a full structured feedback report with hire recommendation.</p>
+              <p>Receive step-by-step AI feedback after every turn, culminating in a full structured feedback report with hire recommendation.</p>
             </div>
           </div>
         </div>
@@ -443,7 +443,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
             </p>
             <ul className="lp-check-list">
               <li><CheckCircle2 size={16} className="text-cyan" /> Overall Candidate Hire Recommendation (Strong Hire, Hire, Lean Hire)</li>
-              <li><CheckCircle2 size={16} className="text-cyan" /> Step-by-Step Gemini Factual Verification & Metric Analysis</li>
+              <li><CheckCircle2 size={16} className="text-cyan" /> Step-by-Step AI Factual Verification & Metric Analysis</li>
               <li><CheckCircle2 size={16} className="text-cyan" /> Actionable 3-step Senior Career Growth Roadmap</li>
             </ul>
             <button className="btn btn-primary btn-lg mt-3" onClick={handleOpenModal}>
@@ -501,7 +501,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
       <section id="contact" className="lp-support-section">
         <div className="lp-section-header">
           <div className="lp-section-tag font-mono text-cyan">24/7 AI AGENT ASSISTANT</div>
-          <h2 className="lp-section-title">Contact Us & Ask Gemini Flash Live</h2>
+          <h2 className="lp-section-title">Contact Us & Ask AI Support Live</h2>
           <p className="lp-section-subtitle">
             Have questions about the interview process, API keys, or cohort topics? Type your problem below to troubleshoot directly with our AI Support Agent.
           </p>
@@ -514,7 +514,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
                 <Sparkles size={18} className="text-cyan" />
               </div>
               <div>
-                <h4>Gemini Flash AI Support Bot</h4>
+                <h4>AI Support Assistant Bot</h4>
                 <p className="text-xs text-emerald">● Online & Ready to Help</p>
               </div>
             </div>
@@ -536,7 +536,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
               <div className="chat-bubble-wrap wrap-bot">
                 <div className="chat-bubble bubble-bot thinking-bubble">
                   <Loader2 size={16} className="animate-spin text-cyan" />
-                  <span>Gemini Flash is analyzing your problem...</span>
+                  <span>AI Assistant is analyzing your problem...</span>
                 </div>
               </div>
             )}
@@ -621,7 +621,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
       <section className="lp-bottom-cta">
         <div className="bottom-cta-inner">
           <h2>Ready to Prove Your AI Engineering Skills?</h2>
-          <p>Sign in to calibrate your expertise from 8 to 20 questions and receive live Gemini Flash feedback.</p>
+          <p>Sign in to calibrate your expertise from 8 to 20 questions and receive live AI Engine feedback.</p>
           <div className="bcta-actions">
             <button className="btn btn-primary btn-lg" onClick={onStartInterview}>
               <span>Candidate Login & Start Assessment</span>
@@ -640,7 +640,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
               <span className="lp-brand-name">InterviewAgent<span className="text-cyan">.AI</span></span>
             </div>
             <p className="text-xs text-dim mt-2">
-              Empowering AI Engineers with realistic, adaptive multi-turn interviews and step-by-step Gemini feedback.
+              Empowering AI Engineers with realistic, adaptive multi-turn interviews and step-by-step AI feedback.
             </p>
           </div>
 
@@ -668,7 +668,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
 
         <div className="lp-footer-bottom">
           <span className="text-xs text-dim">© {new Date().getFullYear()} InterviewAgent.AI. All rights reserved.</span>
-          <span className="text-xs text-dim">Powered by Gemini 3.5 Flash Lite API</span>
+          <span className="text-xs text-dim">Powered by Enterprise AI Engine</span>
         </div>
       </footer>
 

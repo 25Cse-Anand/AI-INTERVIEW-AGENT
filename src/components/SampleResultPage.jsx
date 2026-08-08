@@ -112,7 +112,7 @@ export default function SampleResultPage({ onBackToLanding, onStartInterview }) 
               <div className="srp-candidate-tag font-mono text-cyan">CANDIDATE ASSESSMENT PROFILE</div>
               <h1 className="srp-candidate-name">{sampleData.candidateName}</h1>
               <p className="srp-meta-line text-sm text-muted">
-                31-Day Enterprise AI Cohort · Evaluated live step-by-step by Gemini 3.5 Flash Lite
+                31-Day Enterprise AI Cohort · Evaluated live step-by-step by Enterprise AI Engine
               </p>
             </div>
 

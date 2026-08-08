@@ -32,7 +32,7 @@ const TYPING_PROMPTS = [
 
 const TRUST_BADGES = [
   { icon: <Shield size={15} />, label: "Private & Secure" },
-  { icon: <Zap size={15} />,    label: "Gemini 3.5 Flash Lite" },
+  { icon: <Zap size={15} />,    label: "Enterprise AI Engine" },
   { icon: <Star size={15} />,   label: "Expert-Level"    },
   { icon: <Sparkles size={15} />, label: "Adaptive Interview" }
 ];
@@ -161,7 +161,7 @@ export default function LoginPage({ onLogin }) {
           <div className="lbp-hero">
             <h2 className="lbp-hero-title">
               Prove what you've learned.<br />
-              <span className="text-cyan">Get live evaluation by Gemini 3.5.</span>
+              <span className="text-cyan">Get live evaluation by Advanced AI.</span>
             </h2>
             <p className="lbp-hero-desc">
               A senior AI engineer is waiting. They know your curriculum, your completed missions, and exactly where to push. Answer naturally — evaluated live step-by-step.
@@ -282,7 +282,7 @@ export default function LoginPage({ onLogin }) {
               {isLoading ? (
                 <>
                   <span className="spinner" />
-                  <span>Connecting to Gemini 3.5 Flash Lite...</span>
+                  <span>Connecting to AI Assessor Engine...</span>
                 </>
               ) : (
                 <>
@@ -299,7 +299,7 @@ export default function LoginPage({ onLogin }) {
             <div className="wte-list">
               {[
                 { icon: '🎯', text: 'Questions adapt dynamically based on your chosen level & previous answer' },
-                { icon: '⚡', text: 'Evaluated live step-by-step by Gemini 3.5 / 2.0 Flash Lite' },
+                { icon: '⚡', text: 'Evaluated live step-by-step by Enterprise AI Engine' },
                 { icon: '📊', text: 'Deep technical analysis & strict evaluation of foolish/wrong answers (rated 1-2/10)' },
               ].map((item, i) => (
                 <div key={i} className="wte-item">
@@ -311,7 +311,7 @@ export default function LoginPage({ onLogin }) {
           </div>
 
           <p className="login-disclaimer">
-            <Lock size={11} /> Gemini 3.5 Flash Lite API is pre-configured and ready.
+            <Lock size={11} /> Enterprise AI Engine is pre-configured and ready.
           </p>
         </div>
       </div>

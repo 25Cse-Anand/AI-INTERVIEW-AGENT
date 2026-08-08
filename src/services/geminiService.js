@@ -50,23 +50,64 @@ const CURRICULUM_POOL = [
  * For MCQs: ONLY indicates Correct / Incorrect (no score rating).
  * For Text: STRICTLY rates foolish/wrong/nonsense answers as 1.0 or 2.0 out of 10.
  */
+export const ROUND_PROMPTS = {
+  'System Design Round': {
+    name: 'System Design Round',
+    focus: 'High-Scale System Architecture, Scalability, High Availability, Database Sharding, Caching (Redis/Memcached), Message Queues (Kafka/RabbitMQ), Load Balancing, Rate Limiting, CAP Theorem, and Single Points of Failure.',
+    initialInstruction: 'Ask an open-ended high-scale system design scenario (e.g. Design a real-time notification engine for 50M DAU, or a distributed URL shortener with zero cache stampedes).',
+    probingFocus: 'Probe database bottlenecks, network latency, cache invalidation strategies, partition tolerance, and failure recovery mechanisms.'
+  },
+  'Object-Oriented Design Round': {
+    name: 'Object-Oriented Design Round',
+    focus: 'Low-Level Design (LLD), Object-Oriented Principles (Encapsulation, Polymorphism, Inheritance vs Composition), SOLID Principles, Design Patterns (Factory, Strategy, Observer, Decorator, Singleton), and Clean Class Diagrams.',
+    initialInstruction: 'Ask a low-level object-oriented design problem (e.g. Design an Elevator Control System, Parking Lot, or Vending Machine). Ask candidate to outline classes, interfaces, methods, and design patterns.',
+    probingFocus: 'Probe tight coupling, SOLID principle violations, concurrency locks in multithreaded environments, and extensibility.'
+  },
+  'Machine Coding Round': {
+    name: 'Machine Coding Round',
+    focus: 'Production-Grade Working Code Structure, Clean Interfaces, Method Signatures, Memory Management, Concurrency/Thread-Safety, Error Handling, and Modular Abstractions.',
+    initialInstruction: 'Ask a machine coding problem (e.g. Implement an In-Memory Thread-Safe Cache with TTL expiration and LRU eviction, or a Rate Limiter library). Ask for concrete interface definitions and core algorithmic methods.',
+    probingFocus: 'Probe race conditions, thread synchronization, edge cases (null inputs, memory leaks), and clean separation of concerns.'
+  },
+  'HR Round': {
+    name: 'HR & Behavioral Round',
+    focus: 'Behavioral & Leadership Competencies, STAR Method (Situation, Task, Action, Result), Conflict Resolution, Prioritization under Deadlines, Handling Failures, Team Collaboration, and Cultural Fit.',
+    initialInstruction: 'Ask a realistic behavioral question (e.g. Tell me about a time when you had a severe technical disagreement with a senior teammate or PM. How did you resolve it?).',
+    probingFocus: 'Probe specific actions the candidate personally took, quantifiable results achieved, how they handled emotional tension, and key takeaways.'
+  },
+  'Product Sense Round': {
+    name: 'Product Sense Round',
+    focus: 'Product Strategy, Feature Design, User Personas & Pain Points, Metric Definition (North Star, Retention, Acquisition), Trade-off Analysis, and Product Prioritization Frameworks (RICE, MoSCoW).',
+    initialInstruction: 'Ask a product design & strategy scenario (e.g. You are the PM for a major mobile app. How would you design a feature to increase user retention by 15%?).',
+    probingFocus: 'Probe edge-case user personas, metric cannibalization, prioritization trade-offs, and how they define success metrics.'
+  },
+  'Data Structure and Algorithm Round': {
+    name: 'Data Structure and Algorithm Round',
+    focus: 'Data Structures (Arrays, Hash Maps, Trees, Graphs, Heaps, Tries), Algorithmic Strategies (Dynamic Programming, Two Pointers, Sliding Window, Binary Search, BFS/DFS), Time & Space Complexity (Big-O analysis), and Boundary Edge Cases.',
+    initialInstruction: 'Ask a challenging algorithmic design problem (e.g. Given an un-ordered stream of integers, design a data structure to return the Median in O(1) query time, or find the shortest path in a dynamic grid).',
+    probingFocus: 'Probe Big-O Time & Space complexity bounds, memory optimizations, edge cases (empty input, duplicates, integer overflow), and alternative data structures.'
+  }
+};
+
 /**
  * Evaluates candidate text/MCQ answers with strict factual verification.
  * Accepts either an options object OR positional arguments for fail-safe invocation.
  */
-export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, arg5) {
-  let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions;
+export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, arg5, arg6) {
+  let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions, roundType, questionHistory;
 
   if (typeof arg1 === 'object' && arg1 !== null && arg1.currentQuestion) {
-    ({ userLevel = 'Intermediate', currentQuestion, userAnswer, questionNumber = 1, totalTargetQuestions = 8 } = arg1);
+    ({ userLevel = 'Intermediate', currentQuestion, userAnswer, questionNumber = 1, totalTargetQuestions = 8, roundType = 'System Design Round', questionHistory = [] } = arg1);
   } else {
     currentQuestion = arg1;
     userAnswer = arg2;
     userLevel = arg3 || 'Intermediate';
     questionNumber = arg4 || 1;
     totalTargetQuestions = arg5 || 8;
+    roundType = arg6 || 'System Design Round';
   }
 
+  const roundConfig = ROUND_PROMPTS[roundType] || ROUND_PROMPTS['System Design Round'];
   const activeKey = getGeminiApiKey();
 
   if (activeKey && activeKey.trim().length > 10) {
@@ -81,54 +122,82 @@ export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, a
       }
 
       const prompt = `
-<system_prompt>
-<role>
-You are a Senior AI Engineering Technical Interviewer conducting a live adaptive evaluation.
-</role>
+You are an expert Senior Technical Interviewer conducting a natural, conversational candidate evaluation specifically for a "${roundConfig.name}".
+
+INTERVIEW ROUND FOCUS:
+${roundConfig.focus}
+
+SYSTEM PROMPT INSTRUCTIONS & INTELLIGENCE:
+1. Do NOT follow a predetermined fixed sequence of questions.
+2. React directly to what the candidate claimed in their previous answer.
+3. Identify specific technical concepts, assumptions, weaknesses, vague statements, or missing reasoning tailored to ${roundConfig.name}.
+4. Ask strictly ONE natural follow-up question per response that directly builds on the candidate's answer (${roundConfig.probingFocus}).
+5. If candidate demonstrates strong understanding, progressively increase difficulty and introduce failure modes or edge cases.
+6. If candidate gives a weak answer, ask a simpler clarifying question before increasing difficulty.
+7. Challenge incorrect assumptions rather than immediately giving away the answer.
+8. Do not praise every answer lavishly. Do not give the candidate the solution directly.
+9. DIVERSITY REQUIREMENT: Never repeat a question or category previously asked in Candidate Answer History. Every follow-up must explore a new angle or deeper level.
+
+INTERNAL HIDDEN STATE (EVALUATE CANDIDATE METRICS):
+Evaluate candidate internally across 4 core dimensions (0 to 100%):
+- confidence: Candidate's conviction and clarity
+- technical_depth: Depth of architectural trade-offs, algorithms, or behavioral specifics cited
+- reasoning: Logical problem-solving ability under hypothetical scenario shifts
+- communication: Structure, conciseness, and precision of response
 
 <candidate_context>
-- Question #${questionNumber}: "${currentQuestion?.title || 'Technical Scenario'}"
-- Category: ${currentQuestion?.category || 'AI Systems Architecture'}
+- Round Type: ${roundConfig.name}
+- Question #${questionNumber}: "${currentQuestion?.title || 'Scenario'}"
+- Category: ${currentQuestion?.category || roundConfig.name}
 - Candidate Self-Assessed Level: ${userLevel}
 </candidate_context>
-
-<evaluation_instructions>
-Perform a deep technical evaluation of the candidate's answer.
-
-1. Senseless / Gibberish Check:
-   - ONLY set "isSenselessOrOffTopic": true if the answer is complete random gibberish (e.g. "asdf", "qwerty", "12345") or casual fluff ("I like pizza").
-   - For ANY genuine attempt at answering, set "isSenselessOrOffTopic": false.
-
-2. Score & Level Calibration:
-   - Rate score from 1.0 to 10.0 based on technical accuracy, concept depth, and engineering trade-off awareness.
-   - If answer is wrong or very weak: Score 1.0 - 4.0, Level "Beginner" (📘, #F43F5E).
-   - If answer is partially correct: Score 5.0 - 6.5, Level "Intermediate" (⚙️, #F59E0B).
-   - If answer is strong & accurate: Score 7.0 - 8.5, Level "Advanced" (🚀, #10B981).
-   - If answer is exceptional & production-grade: Score 9.0 - 10.0, Level "Expert" (🧠, #00F2FE).
-
-3. Constructive Feedback:
-   - Provide clear, encouraging, step-by-step technical feedback. Point out what they got right, correct any technical errors, and explain true production mechanisms.
-</evaluation_instructions>
 
 Candidate Answer:
 "${userAnswer}"
 
-RETURN ONLY VALID UNWRAPPED JSON:
+Candidate Answer History:
+${JSON.stringify((questionHistory || []).map(q => ({ q: q.title || q.topic, cat: q.category })))}
+
+RETURN ONLY VALID UNWRAPPED JSON MATCHING THIS EXACT SCHEMA:
 {
+  "hidden_state": {
+    "confidence": 72,
+    "technical_depth": 65,
+    "reasoning": 70,
+    "communication": 80,
+    "current_topic": "${currentQuestion?.category || roundConfig.name}",
+    "depth_level": 3,
+    "detected_claims": ["Identified specific claim made by candidate"],
+    "limitation_identified": "Identified limitation or missing trade-off",
+    "weak_areas": ["Specific weak technical concepts"],
+    "strong_areas": ["Specific strong technical concepts"],
+    "likely_next_question": "Scenario or failure mode question to ask if candidate pushes deeper"
+  },
+  "thinking_process": {
+    "accuracy_assessment": "Assess technical correctness and claim validity...",
+    "knowledge_gaps": "Identify exact knowledge gaps or unaddressed edge cases...",
+    "next_question_plan": "Plan for adaptive follow-up probing for ${roundConfig.name}..."
+  },
   "evaluation": {
     "isSenselessOrOffTopic": false,
     "senselessReason": "",
-    "score": 8.5,
-    "isCorrect": true,
+    "score": 7.5,
     "level": "Advanced",
     "levelEmoji": "🚀",
     "levelColor": "#10B981",
+    "isCorrect": true,
     "feedback": "Step-by-step technical analysis and explicit corrections...",
-    "strengths": ["Cited key architectural concepts"],
-    "gaps": ["Elaborate on production latency parameters"]
+    "strengths": ["Accurate explanation"],
+    "improvements": ["Elaborate on edge-case handling"]
+  },
+  "nextQuestion": {
+    "id": ${questionNumber + 1},
+    "category": "${currentQuestion?.category || roundConfig.name}",
+    "type": "text",
+    "title": "One focused, natural follow-up question probing candidate's previous answer directly for ${roundConfig.name}...",
+    "hint": "Consider edge cases, trade-offs, or failure states"
   }
-}
-</system_prompt>`;
+}`;
 
       const result = await model.generateContent(prompt);
       const text = result.response.text();
@@ -137,6 +206,29 @@ RETURN ONLY VALID UNWRAPPED JSON:
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed?.evaluation) {
+          if (!parsed.thinking_process) {
+            parsed.thinking_process = {
+              accuracy_assessment: `Evaluated candidate answer for question #${questionNumber} (${currentQuestion?.category}).`,
+              knowledge_gaps: (parsed.evaluation.improvements || []).join('; ') || 'None identified.',
+              next_question_plan: `Framed next question targeting ${parsed.nextQuestion?.category || 'AI Systems'}.`
+            };
+          }
+          if (!parsed.hidden_state) {
+            const scoreVal = parsed.evaluation.score || 7.0;
+            parsed.hidden_state = {
+              confidence: Math.round(scoreVal * 9.5),
+              technical_depth: Math.round(scoreVal * 9.0),
+              reasoning: Math.round(scoreVal * 9.2),
+              communication: Math.round(scoreVal * 9.8),
+              current_topic: currentQuestion?.category || 'AI Architecture',
+              depth_level: Math.min(5, Math.ceil(questionNumber / 2)),
+              detected_claims: parsed.evaluation.strengths || [],
+              limitation_identified: (parsed.evaluation.improvements || [])[0] || 'Needs deeper quantification',
+              weak_areas: parsed.evaluation.improvements || [],
+              strong_areas: parsed.evaluation.strengths || [],
+              likely_next_question: `How would you handle failure recovery in ${currentQuestion?.category}?`
+            };
+          }
           return parsed;
         }
       }
@@ -215,6 +307,11 @@ function simulateStrictEvaluation({ userLevel, currentQuestion, userAnswer, ques
   }
 
   return {
+    thinking_process: {
+      accuracy_assessment: `Evaluated response for Q#${questionNumber} (${currentQuestion.category}). Score: ${score}/10 (${level}).`,
+      knowledge_gaps: improvements.join('; ') || 'No critical gaps observed.',
+      next_question_plan: `Frame Q#${nextQNum} on ${generatedNextQuestion.category} to probe depth.`
+    },
     evaluation: {
       isSenselessOrOffTopic: false,
       senselessReason: '',
@@ -242,9 +339,24 @@ export async function generateAdaptiveQuestion(
   previousQuestion = null,
   previousAnswer = null,
   previousEvaluation = null,
-  candidateRole = 'Engineer'
+  candidateRole = 'Engineer',
+  history = [],
+  roundType = 'System Design Round'
 ) {
   const activeKey = getGeminiApiKey();
+  const roundConfig = ROUND_PROMPTS[roundType] || ROUND_PROMPTS['System Design Round'];
+
+  const RANDOM_STARTER_DOMAINS = [
+    "High-Scale System Architecture & Sharding",
+    "Low-Level Object Oriented Class Hierarchy & SOLID Principles",
+    "Machine Coding Thread-Safety & Eviction Policies",
+    "HR Behavioral Conflict Resolution & STAR Method",
+    "Product Sense Feature Design & Success Metrics",
+    "Data Structures & Big-O Algorithmic Optimizations"
+  ];
+
+  const randomStarterDomain = RANDOM_STARTER_DOMAINS[Math.floor(Math.random() * RANDOM_STARTER_DOMAINS.length)];
+  const sessionToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   if (activeKey && activeKey.trim().length > 10) {
     try {
@@ -262,11 +374,13 @@ export async function generateAdaptiveQuestion(
       };
 
       const roleContext = personaGuidance[candidateRole] || personaGuidance.Engineer;
+      const askedTopicsList = (history || []).map(h => h.topic || h.question?.title || '').filter(Boolean);
 
       const prompt = `
 <question_generator_prompt>
 <role>
 You are an Expert AI Technical Interviewer creating Question #${qNum} for a candidate.
+Session Unique Token: ${sessionToken}
 </role>
 
 <candidate_profile>
@@ -274,6 +388,12 @@ You are an Expert AI Technical Interviewer creating Question #${qNum} for a cand
 - Target Persona / Role: ${candidateRole} (${roleContext})
 - Question Sequence Number: #${qNum}
 </candidate_profile>
+
+${askedTopicsList.length > 0 ? `
+<already_asked_topics>
+${JSON.stringify(askedTopicsList)}
+</already_asked_topics>
+` : ''}
 
 ${previousQuestion && previousAnswer ? `
 <previous_turn_context>
@@ -284,13 +404,16 @@ ${previousQuestion && previousAnswer ? `
 </previous_turn_context>
 ` : `
 <initial_question_instruction>
-This is Question #1. Create an engaging, high-impact initial open-ended technical scenario tailored specifically for a ${candidateRole} at ${userLevel} level.
+This is Question #1 of a BRAND NEW interview session.
+Required Focus Domain for this session: "${randomStarterDomain}"
+Create a completely unique, novel open-ended technical scenario centered on "${randomStarterDomain}" for a ${candidateRole} at ${userLevel} level.
+Do NOT repeat generic introductory questions. Make this initial question distinct and engaging.
 </initial_question_instruction>
 `}
 
 <instructions>
 1. Generate ONE dynamic, novel open-ended technical scenario.
-2. DO NOT repeat standard generic questions. Make it specific and scenario-driven.
+2. CRITICAL: DO NOT repeat any question or topic previously asked in this session or standard templates.
 3. If previous answer was intelligent: Frame the new question directly building upon what they explained.
 4. Keep question text clear, professional, and challenging.
 5. Provide a helpful 1-sentence "hint" / pro-tip.
@@ -358,6 +481,16 @@ RETURN ONLY VALID UNWRAPPED JSON:
         category: "Fine-Tuning Concepts",
         title: `Explain the fundamental difference between Pre-training, Instruction Fine-Tuning, and Parameter-Efficient Fine-Tuning (PEFT/LoRA).`,
         hint: "Discuss raw corpus training vs instruction-following data and low-rank matrix adapter updates."
+      },
+      {
+        category: "LLM Guardrails",
+        title: `What is prompt injection in AI applications, and how would you defend a student customer service chatbot against malicious user inputs?`,
+        hint: "Explain input sanitization, system prompt isolation, and dual-LLM evaluator patterns."
+      },
+      {
+        category: "Vector Databases",
+        title: `How does cosine similarity differ from Euclidean distance (L2) and dot product when searching vector embedding spaces?`,
+        hint: "Discuss normalized vectors, vector magnitude impact, and angular distance calculations."
       }
     ],
     Researcher: [
@@ -380,6 +513,16 @@ RETURN ONLY VALID UNWRAPPED JSON:
         category: "Agent Alignment & RLHF",
         title: `How does Direct Preference Optimization (DPO) simplify LLM alignment compared to traditional RLHF with explicit reward modeling (PPO)?`,
         hint: "Discuss implicit reward formulation, reference model log-ratio loss, and eliminating PPO actor-critic instability."
+      },
+      {
+        category: "Speculative Decoding",
+        title: `How does Speculative Decoding accelerate LLM inference without altering the target model output distribution?`,
+        hint: "Explain draft model token sampling, parallel target verification, and acceptance probability ratios."
+      },
+      {
+        category: "RoPE & Position Embeddings",
+        title: `Walk me through Rotary Position Embeddings (RoPE) and how linear scaling or YaRN extends context windows beyond pre-training length.`,
+        hint: "Discuss complex plane rotation, frequency decomposition, and temperature scaling in attention softmax."
       }
     ],
     Engineer: [
@@ -402,12 +545,22 @@ RETURN ONLY VALID UNWRAPPED JSON:
         category: "AI Inference & vLLM Serving",
         title: `Why does vLLM's PagedAttention architecture achieve up to 2-4x higher inference throughput compared to standard Transformers serving?`,
         hint: "Explain virtual memory paging, Key-Value (KV) cache block allocation, and elimination of VRAM fragmentation."
+      },
+      {
+        category: "Semantic Caching",
+        title: `How would you architect a semantic cache layer for high-volume LLM endpoints to reduce latency and API costs?`,
+        hint: "Discuss vector threshold similarity matching, cache invalidation, and TTL strategies."
+      },
+      {
+        category: "Agentic State Management",
+        title: `In a production LangGraph or multi-agent pipeline, how do you handle state checkpointing, human-in-the-loop (HITL) intervention, and error recovery?`,
+        hint: "Explain persistent thread state, breakpoint triggers, and state mutation before re-execution."
       }
     ]
   };
 
   const pool = personaPools[candidateRole] || personaPools.Engineer;
-  const randomIndex = (qNum + Math.floor(Math.random() * 10)) % pool.length;
+  const randomIndex = Math.floor(Math.random() * pool.length);
   const pick = pool[randomIndex];
 
   return {
@@ -429,14 +582,14 @@ export async function askSupportBotGemini(userQuery) {
     const genAI = new GoogleGenerativeAI(activeKey);
     const candidateModels = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
-    const systemPrompt = `You are "Gemini Flash Support Bot", a friendly, helpful, expert customer support AI assistant for InterviewAgent.AI (an Enterprise AI Interviewing platform for RAG, Vector DBs, MCP, Agents, and LLMs).
+    const systemPrompt = `You are "AI Support Assistant", a friendly, helpful, expert customer support AI assistant for InterviewAgent.AI (an Enterprise AI Interviewing platform for RAG, Vector DBs, MCP, Agents, and LLMs). Do NOT mention the name "Gemini" anywhere in your response. Refer to the model as "Enterprise AI Engine".
 
 User Question: "${userQuery}"
 
 Instructions:
 1. Provide a concise, clear, encouraging response (max 2-3 short paragraphs).
-2. If asked about API keys: Explain that a Gemini 3.5 / 2.0 Flash Lite API key is pre-integrated so manual entry is optional.
-3. If asked about format: Explain that interviews consist of open-ended text scenarios (8 to 20 questions) with live step-by-step Gemini feedback, a live question timer, skip & review privileges, and no word limits!
+2. If asked about API keys: Explain that an Enterprise AI Engine API key is pre-integrated so manual entry is optional.
+3. If asked about format: Explain that interviews consist of open-ended text scenarios (8 to 20 questions) with live step-by-step AI feedback, a live question timer, skip & review privileges, and no word limits!
 4. Maintain a warm, expert, professional tone.`;
 
     for (const modelName of candidateModels) {
@@ -457,18 +610,105 @@ Instructions:
   const queryLower = (userQuery || '').toLowerCase();
 
   if (queryLower.includes('key') || queryLower.includes('api')) {
-    return "🔑 **API Key Information**: Your Gemini 3.5 / 2.0 Flash Lite API key is pre-integrated (`AIzaSyBC7uH...`) into InterviewAgent.AI! You don't need to enter any key manually, but you can paste your own custom key on the Candidate Login screen if preferred.";
+    return "🔑 **API Key Information**: Your Enterprise AI Engine API key is pre-integrated into InterviewAgent.AI! You don't need to enter any key manually.";
   }
 
   if (queryLower.includes('format') || queryLower.includes('question') || queryLower.includes('mcq') || queryLower.includes('how')) {
-    return "⚡ **Interview Format**: Interviews feature open-ended technical scenarios covering 31-Day Enterprise AI Cohort topics (RAG, Vector DBs, MCP, Agents, LoRA). After logging in, you can set your target length from 8 to 20 questions, enjoy zero word limits, track time with a live question timer, and get instant step-by-step Gemini feedback!";
+    return "⚡ **Interview Format**: Interviews feature open-ended technical scenarios covering 31-Day Enterprise AI Cohort topics (RAG, Vector DBs, MCP, Agents, LoRA). After logging in, you can set your target length from 8 to 20 questions, enjoy zero word limits, track time with a live question timer, and get instant step-by-step AI feedback!";
   }
 
   if (queryLower.includes('skip') || queryLower.includes('review') || queryLower.includes('leftover')) {
     return "⏭️ **Skip & Review Feature**: If you encounter a complex scenario, simply click 'Skip Question ⏭️'. All skipped questions are stored in a review list so you can answer them one-by-one at the end before submitting your final report!";
   }
 
-  return "👋 **Welcome to InterviewAgent.AI Support!** Our platform conducts live adaptive technical interviews powered by Gemini 3.5 Flash Lite. Click **Candidate Login** in the top navigation whenever you are ready to begin your technical assessment!";
+  return "👋 **Welcome to InterviewAgent.AI Support!** Our platform conducts live adaptive technical interviews powered by Enterprise AI Engine. Click **Candidate Login** in the top navigation whenever you are ready to begin your technical assessment!";
+}
+
+/**
+ * Uses Gemini API to evaluate the full candidate transcript and generate
+ * a personalized, structured final report dashboard.
+ */
+export async function generateFinalReportAnalysis({ candidateName, roundType, userLevel, QnAHistory }) {
+  const activeKey = getGeminiApiKey();
+
+  if (activeKey && activeKey.trim().length > 10) {
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey.trim());
+      const candidateModels = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+
+      const transcriptText = (QnAHistory || []).map((turn, i) => `
+Turn #${i + 1}:
+Question: "${turn.question?.title || turn.topic}"
+Candidate Answer: "${turn.answer}"
+Score Given: ${turn.score}/10
+Interviewer Feedback: "${turn.feedback}"
+`).join('\n---\n');
+
+      const prompt = `
+You are a Senior AI Hiring Manager synthesizing the final assessment report for a candidate who just completed a "${roundType || 'System Design Round'}" interview.
+
+Candidate Name: ${candidateName || 'Candidate'}
+Candidate Target Round: ${roundType || 'System Design Round'}
+Self-Assessed Level: ${userLevel || 'Intermediate'}
+
+Full Interview Transcript:
+${transcriptText}
+
+Synthesize a comprehensive, personalized final evaluation report based STRICTLY on the candidate's actual technical answers and performance.
+
+RETURN ONLY VALID UNWRAPPED JSON MATCHING THIS EXACT SCHEMA:
+{
+  "overallScore": 82,
+  "avgAnswerScore": "8.2",
+  "recommendation": "Strong Hire",
+  "dominantLevel": "ADVANCED",
+  "narrative": "Synthesize a 3-4 sentence comprehensive narrative analyzing candidate's performance, trade-off depth, and readiness for ${roundType}...",
+  "scores": {
+    "confidence": 85,
+    "technicalDepth": 78,
+    "reasoning": 82,
+    "communication": 88
+  },
+  "keyStrengths": [
+    "Specific technical strength 1 citing candidate answer details...",
+    "Specific technical strength 2...",
+    "Specific technical strength 3..."
+  ],
+  "areasForImprovement": [
+    "Specific gap 1 citing missing edge cases or trade-offs...",
+    "Specific gap 2...",
+    "Specific gap 3..."
+  ],
+  "actionableSteps": [
+    "Actionable growth step 1 tailored for ${roundType}...",
+    "Actionable growth step 2...",
+    "Actionable growth step 3..."
+  ]
+}
+`;
+
+      for (const modelName of candidateModels) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const text = result?.response?.text();
+          if (text) {
+            const cleaned = text.replace(new RegExp('```json', 'g'), '').replace(new RegExp('```', 'g'), '').trim();
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              return JSON.parse(jsonMatch[0]);
+            }
+          }
+        } catch (e) {
+          console.warn(`Final report generation with ${modelName} failed:`, e);
+        }
+      }
+    } catch (err) {
+      console.warn("Gemini API error during report generation:", err);
+    }
+  }
+
+  return null;
 }
 
 

@@ -5731,6 +5731,53 @@ body {
 }
 .sf-metric-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 0.88rem; color: #1F1914; margin-bottom: 0.5rem; }
 
+/* ── Thinking Process Block Matrix Styling ── */
+.di-thinking-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.08);
+}
+.thinking-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--violet-accent, #8B5CF6);
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed rgba(139, 92, 246, 0.25);
+  margin-bottom: 0.85rem;
+}
+.thinking-card-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.thinking-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ti-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--cyan-accent, #00F2FE);
+  font-family: var(--font-mono, monospace);
+}
+.ti-text {
+  font-size: 0.88rem;
+  color: var(--text-main, #E2E8F0);
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid var(--violet-accent, #8B5CF6);
+}
+
 /* Question Log */
 .sf-eval-list { display: flex; flex-direction: column; gap: 1rem; }
 .sf-eval-item {
@@ -5784,10 +5831,63 @@ body {
 
 .sf-cta-row { display: flex; justify-content: center; }
 
-
-
-
-
-
-
-
+/* ── INTERVIEW ROUND SELECTION CARDS ── */
+.di-round-select-box {
+  margin-bottom: 1.5rem;
+}
+.di-rounds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+.di-round-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: var(--bg-dark, #0F172A);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.di-round-card:hover {
+  border-color: rgba(0, 242, 254, 0.4);
+  transform: translateY(-2px);
+  background: rgba(15, 23, 42, 0.95);
+}
+.di-round-card.selected {
+  border-color: var(--accent-color, #00F2FE);
+  background: rgba(0, 242, 254, 0.06);
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.15);
+}
+.di-round-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.di-round-info {
+  flex: 1;
+}
+.di-round-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main, #E2E8F0);
+}
+.di-round-desc {
+  font-size: 0.76rem;
+  color: var(--text-dim, #94A3B8);
+  margin-top: 0.25rem;
+  line-height: 1.35;
+}
+.di-round-check {
+  opacity: 0;
+  color: var(--accent-color, #00F2FE);
+  transition: opacity 0.2s ease;
+}
+.di-round-card.selected .di-round-check {
+  opacity: 1;
+}
