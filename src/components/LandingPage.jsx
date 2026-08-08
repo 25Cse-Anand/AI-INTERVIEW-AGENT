@@ -1,9 +1,84 @@
-import React, { useState } from 'react';
-import { Bot, Sparkles, ArrowRight, ShieldCheck, Zap, Layers, Brain, CheckCircle2, TrendingUp, Cpu, Award, Play, Star, ChevronRight, Lock, HelpCircle, Users, Check, FastForward, SkipForward } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bot, Sparkles, ArrowRight, ShieldCheck, Zap, Layers, Brain, CheckCircle2, TrendingUp, Cpu, Award, Play, Star, ChevronRight, ChevronLeft, Lock, HelpCircle, Users, Check, FastForward, SkipForward } from 'lucide-react';
 import ResultPreviewModal from './ResultPreviewModal';
+
+const HERO_SLIDES = [
+  {
+    url: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=1200&q=80',
+    tag: 'AI ENGINEERING ASSESSMENT',
+    alt: 'Professional AI Technical Interviewing and Engineering Analytics'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80',
+    tag: 'REAL-TIME GEMINI STREAM',
+    alt: 'Live Candidate Telemetry and Evaluation Dashboards'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80',
+    tag: 'RAG & VECTOR ARCHITECTURE',
+    alt: 'Neural Networks and HNSW Vector Search Systems'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&q=80',
+    tag: 'AGENTIC CODE PROTOCOLS',
+    alt: 'Autonomous Agentic System Evaluation'
+  }
+];
+
+const SHOWCASE_SLIDES = [
+  {
+    url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1000&q=80',
+    tag: 'PRODUCTION COHORT INFRASTRUCTURE',
+    alt: 'AI Engineering Team Collaboration and Interview Assessment'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1000&q=80',
+    tag: 'HIGH-THROUGHPUT VECTOR CLUSTERS',
+    alt: 'Enterprise Server Racks & Vector DB Clusters'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1000&q=80',
+    tag: 'vLLM PAGEDATTENTION & LATENCY',
+    alt: 'GPU Cluster & Real-Time Performance Analytics'
+  }
+];
 
 export default function LandingPage({ onStartInterview }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [showcaseIndex, setShowcaseIndex] = useState(0);
+
+  // Auto-advance hero slides every 3.5s
+  useEffect(() => {
+    const heroInterval = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 3500);
+
+    const showcaseInterval = setInterval(() => {
+      setShowcaseIndex((prev) => (prev + 1) % SHOWCASE_SLIDES.length);
+    }, 4500);
+
+    return () => {
+      clearInterval(heroInterval);
+      clearInterval(showcaseInterval);
+    };
+  }, []);
+
+  const handleHeroPrev = () => {
+    setHeroIndex((prev) => (prev === 0 ? HERO_SLIDES.length - 1 : prev - 1));
+  };
+
+  const handleHeroNext = () => {
+    setHeroIndex((prev) => (prev + 1) % HERO_SLIDES.length);
+  };
+
+  const handleShowcasePrev = () => {
+    setShowcaseIndex((prev) => (prev === 0 ? SHOWCASE_SLIDES.length - 1 : prev - 1));
+  };
+
+  const handleShowcaseNext = () => {
+    setShowcaseIndex((prev) => (prev + 1) % SHOWCASE_SLIDES.length);
+  };
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
@@ -102,7 +177,7 @@ export default function LandingPage({ onStartInterview }) {
             </div>
           </div>
 
-          {/* Hero Visual Right: Unsplash Professional AI Technology & Dashboard Image */}
+          {/* Hero Visual Right: Dynamic Auto-Changing Picture Carousel */}
           <div className="lp-hero-visual-card animate-scale-up">
             <div className="visual-card-glass">
               <div className="visual-card-topbar">
@@ -115,12 +190,47 @@ export default function LandingPage({ onStartInterview }) {
               </div>
 
               <div className="visual-card-image-wrap">
+                {/* Active Dynamic Image with Smooth Fade */}
                 <img
-                  src="https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=1200&q=80"
-                  alt="Professional AI Technical Interviewing and Engineering Analytics"
-                  className="visual-main-img"
+                  key={heroIndex}
+                  src={HERO_SLIDES[heroIndex].url}
+                  alt={HERO_SLIDES[heroIndex].alt}
+                  className="visual-main-img slider-img-fade slider-img-active"
                 />
                 <div className="visual-overlay-gradient" />
+
+                {/* Overlaid Slide Tag Badge */}
+                <div className="carousel-caption-badge font-mono">
+                  <span>{HERO_SLIDES[heroIndex].tag}</span>
+                </div>
+
+                {/* Manual Navigation Arrow Buttons */}
+                <button
+                  className="carousel-arrow carousel-arrow-prev"
+                  onClick={handleHeroPrev}
+                  aria-label="Previous Slide"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  className="carousel-arrow carousel-arrow-next"
+                  onClick={handleHeroNext}
+                  aria-label="Next Slide"
+                >
+                  <ChevronRight size={20} />
+                </button>
+
+                {/* Interactive Carousel Indicator Dots */}
+                <div className="carousel-indicators">
+                  {HERO_SLIDES.map((_, i) => (
+                    <button
+                      key={i}
+                      className={`carousel-dot ${i === heroIndex ? 'active' : ''}`}
+                      onClick={() => setHeroIndex(i)}
+                      aria-label={`Slide ${i + 1}`}
+                    />
+                  ))}
+                </div>
 
                 {/* Overlaid Live Badges */}
                 <div className="visual-float-badge float-top-right font-mono">
@@ -253,7 +363,7 @@ export default function LandingPage({ onStartInterview }) {
         </div>
       </section>
 
-      {/* ── MID-PAGE HERO IMAGE SHOWCASE SECTION ── */}
+      {/* ── MID-PAGE HERO IMAGE SHOWCASE SECTION (DYNAMIC CAROUSEL) ── */}
       <section id="curriculum" className="lp-showcase-section">
         <div className="lp-showcase-container">
           <div className="lp-showcase-text">
@@ -273,12 +383,47 @@ export default function LandingPage({ onStartInterview }) {
             </button>
           </div>
 
-          <div className="lp-showcase-image-wrap">
+          {/* Dynamic Showcase Image Slider */}
+          <div className="lp-showcase-image-wrap style={{ position: 'relative' }}">
             <img
-              src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1000&q=80"
-              alt="AI Engineering Team Collaboration and Interview Assessment"
-              className="lp-showcase-img"
+              key={showcaseIndex}
+              src={SHOWCASE_SLIDES[showcaseIndex].url}
+              alt={SHOWCASE_SLIDES[showcaseIndex].alt}
+              className="lp-showcase-img slider-img-fade slider-img-active"
             />
+
+            {/* Overlaid Showcase Slide Badge */}
+            <div className="carousel-caption-badge font-mono">
+              <span>{SHOWCASE_SLIDES[showcaseIndex].tag}</span>
+            </div>
+
+            {/* Showcase Arrow Controls */}
+            <button
+              className="carousel-arrow carousel-arrow-prev"
+              onClick={handleShowcasePrev}
+              aria-label="Previous Image"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <button
+              className="carousel-arrow carousel-arrow-next"
+              onClick={handleShowcaseNext}
+              aria-label="Next Image"
+            >
+              <ChevronRight size={20} />
+            </button>
+
+            {/* Indicators */}
+            <div className="carousel-indicators">
+              {SHOWCASE_SLIDES.map((_, i) => (
+                <button
+                  key={i}
+                  className={`carousel-dot ${i === showcaseIndex ? 'active' : ''}`}
+                  onClick={() => setShowcaseIndex(i)}
+                  aria-label={`Showcase Slide ${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </section>
