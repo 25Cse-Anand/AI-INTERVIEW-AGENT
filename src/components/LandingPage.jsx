@@ -453,7 +453,7 @@ export default function LandingPage({ onLoginClick, onStartInterview }) {
           </div>
 
           {/* Dynamic Showcase Image Slider */}
-          <div className="lp-showcase-image-wrap style={{ position: 'relative' }}">
+          <div className="lp-showcase-image-wrap" style={{ position: 'relative' }}>
             <img
               key={showcaseIndex}
               src={SHOWCASE_SLIDES[showcaseIndex].url}

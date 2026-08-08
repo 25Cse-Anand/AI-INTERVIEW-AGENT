@@ -1,51 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, User, Sparkles, CheckCircle2, ArrowRight, Brain, Target, Shield, HelpCircle, Layers, AlertCircle, RefreshCw, Award, Check, X, ChevronRight, Zap, AlertTriangle, RotateCcw, XCircle, SkipForward, FileQuestion, FastForward } from 'lucide-react';
-import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReportAnalysis } from '../services/geminiService';
-
-export const INTERVIEW_ROUNDS = [
-  {
-    id: 'System Design Round',
-    name: 'System Design Round',
-    icon: '🏗️',
-    color: '#00F2FE',
-    desc: 'Scalability, Distributed Systems, Caching, DB Sharding & High Availability'
-  },
-  {
-    id: 'Object-Oriented Design Round',
-    name: 'Object-Oriented Design Round',
-    icon: '🧩',
-    color: '#10B981',
-    desc: 'Low-Level Design (LLD), SOLID Principles, Design Patterns & Class Diagrams'
-  },
-  {
-    id: 'Machine Coding Round',
-    name: 'Machine Coding Round',
-    icon: '💻',
-    color: '#8B5CF6',
-    desc: 'Clean Code, Working Thread-Safe Architecture, Concurrency & Refactoring'
-  },
-  {
-    id: 'HR Round',
-    name: 'HR & Behavioral Round',
-    icon: '🤝',
-    color: '#F59E0B',
-    desc: 'STAR Method, Conflict Resolution, Leadership, Prioritization & Cultural Fit'
-  },
-  {
-    id: 'Product Sense Round',
-    name: 'Product Sense Round',
-    icon: '💡',
-    color: '#EC4899',
-    desc: 'Product Design, Feature Prioritization, User Metrics & Trade-off Analysis'
-  },
-  {
-    id: 'Data Structure and Algorithm Round',
-    name: 'Data Structure and Algorithm Round',
-    icon: '⚡',
-    color: '#3B82F6',
-    desc: 'Time/Space Complexity (Big-O), Trees, Dynamic Programming, Graphs & Memory'
-  }
-];
+import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport } from '../services/geminiService';
 
 const LEVELS = [
   {
@@ -79,9 +34,10 @@ const LEVELS = [
 ];
 
 export default function DynamicInterview({ user, onComplete }) {
+  // Stages: 'greeting' | 'level_select' | 'questioning' | 'evaluated' | 'review_skipped_prompt' | 'finished'
   const [stage, setStage] = useState('greeting');
   const [userLevel, setUserLevel] = useState('Intermediate');
-  const [totalTargetQuestions, setTotalTargetQuestions] = useState(8);
+  const [totalTargetQuestions, setTotalTargetQuestions] = useState(8); // Defaulting to 8 questions
 
   // Question & History state
   const [currentQuestionNumber, setCurrentQuestionNumber] = useState(1);
@@ -100,12 +56,8 @@ export default function DynamicInterview({ user, onComplete }) {
 
   // Evaluation & Processing states
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [lastEvaluation, setLastEvaluation] = useState(null);
-  const [lastThinkingProcess, setLastThinkingProcess] = useState(null);
-  const [lastHiddenState, setLastHiddenState] = useState(null);
-  const [pendingNextQuestion, setPendingNextQuestion] = useState(null);
-  const [selectedRound, setSelectedRound] = useState('System Design Round');
-  const [isSynthesizingReport, setIsSynthesizingReport] = useState(false);
 
   // History tracking for final report
   const [evaluationsHistory, setEvaluationsHistory] = useState([]);
@@ -135,13 +87,12 @@ export default function DynamicInterview({ user, onComplete }) {
   const [candidateRole, setCandidateRole] = useState('Engineer'); // 'Student' | 'Researcher' | 'Engineer'
   const [lastAnswerText, setLastAnswerText] = useState('');
 
-  // Initialize initial question when level/role/round is selected
+  // Initialize initial question when level/role is selected
   const handleSelectLevel = async (levelKey) => {
-    const lvlToSet = levelKey || userLevel;
-    setUserLevel(lvlToSet);
+    setUserLevel(levelKey);
     setIsEvaluating(true);
     try {
-      const initialQ = await generateAdaptiveQuestion(1, lvlToSet, null, null, null, candidateRole, [], selectedRound);
+      const initialQ = await generateAdaptiveQuestion(1, levelKey, null, null, null, candidateRole);
       setCurrentQuestion(initialQ);
       setCoveredCategories(new Set([initialQ.category]));
     } catch (e) {
@@ -223,17 +174,10 @@ export default function DynamicInterview({ user, onComplete }) {
         userAnswer: answerPayload,
         userLevel,
         questionNumber: currentQuestionNumber,
-        totalTargetQuestions,
-        roundType: selectedRound,
-        questionHistory: evaluationsHistory
+        totalTargetQuestions
       });
 
-      const { hidden_state, thinking_process, evaluation, nextQuestion } = evalResult;
-      if (hidden_state) setLastHiddenState(hidden_state);
-      if (thinking_process) setLastThinkingProcess(thinking_process);
-      if (nextQuestion && nextQuestion.title) setPendingNextQuestion(nextQuestion);
-
-      const activeEval = evaluation || {
+      const evaluation = evalResult?.evaluation || {
         score: 1.0,
         isCorrect: false,
         level: 'Beginner',
@@ -243,7 +187,8 @@ export default function DynamicInterview({ user, onComplete }) {
         strengths: [],
         gaps: ['Provide comprehensive technical mechanics']
       };
-      setLastEvaluation(activeEval);
+
+      setLastEvaluation(evaluation);
 
       setEvaluationsHistory(prev => [
         ...prev,
@@ -251,16 +196,15 @@ export default function DynamicInterview({ user, onComplete }) {
           questionNumber: currentQuestionNumber,
           question: currentQuestion,
           answer: answerPayload,
-          evaluation: activeEval,
-          hiddenState: hidden_state,
+          evaluation: evaluation,
           day: (currentQuestionNumber % 30) + 1,
           topic: currentQuestion.title,
           snippet: answerPayload.substring(0, 100) + '...',
-          score: activeEval.score,
-          level: activeEval.level,
-          levelEmoji: activeEval.levelEmoji,
-          levelColor: activeEval.levelColor,
-          feedback: activeEval.feedback
+          score: evaluation.score,
+          level: evaluation.level,
+          levelEmoji: evaluation.levelEmoji,
+          levelColor: evaluation.levelColor,
+          feedback: evaluation.feedback
         }
       ]);
 
@@ -314,19 +258,6 @@ export default function DynamicInterview({ user, onComplete }) {
     }
 
     const nextQNum = currentQuestionNumber + 1;
-
-    // Direct conversational follow-up generated by Gemini API from candidate's exact answer
-    if (pendingNextQuestion && pendingNextQuestion.title) {
-      setCurrentQuestion(pendingNextQuestion);
-      setCurrentQuestionNumber(nextQNum);
-      if (pendingNextQuestion.category) {
-        setCoveredCategories(prev => new Set([...prev, pendingNextQuestion.category]));
-      }
-      setPendingNextQuestion(null);
-      setStage('questioning');
-      return;
-    }
-
     setIsEvaluating(true);
     try {
       const nextQ = await generateAdaptiveQuestion(
@@ -335,9 +266,7 @@ export default function DynamicInterview({ user, onComplete }) {
         currentQuestion?.title || currentQuestion,
         lastAnswerText,
         lastEvaluation,
-        candidateRole,
-        evaluationsHistory,
-        selectedRound
+        candidateRole
       );
       setCurrentQuestion(nextQ);
       setCurrentQuestionNumber(nextQNum);
@@ -357,147 +286,104 @@ export default function DynamicInterview({ user, onComplete }) {
   };
 
   const compileAndFinishReport = async () => {
-    setIsSynthesizingReport(true);
+    setIsGeneratingReport(true);
+    setStage('generating_report');
+
+    const validEvals = evaluationsHistory.length > 0 ? evaluationsHistory : [];
+
+    const unattemptedSkippedEvals = skippedQuestions.map(sq => ({
+      questionNumber: sq.questionNumber,
+      question: sq.question,
+      answer: 'Skipped by candidate',
+      evaluation: { score: 0.0, level: 'Skipped', levelEmoji: '⏭️', levelColor: '#8B5CF6', feedback: 'Candidate chose to skip this question.' },
+      day: (sq.questionNumber % 30) + 1,
+      topic: sq.question?.title || 'Skipped',
+      snippet: 'Question Skipped',
+      score: 0.0, level: 'Skipped', levelEmoji: '⏭️', levelColor: '#8B5CF6',
+      feedback: 'Candidate chose to skip this question.',
+      isSkipped: true
+    }));
+
+    const allReportEvaluations = [...validEvals, ...unattemptedSkippedEvals].sort((a, b) => a.questionNumber - b.questionNumber);
+
     try {
-      const validEvals = evaluationsHistory.length > 0 ? evaluationsHistory : [
-        {
-          questionNumber: 1,
-          question: { category: selectedRound, title: 'Technical Scenario' },
-          answer: 'Completed Assessment',
-          evaluation: { score: 7.5, level: 'Advanced', levelEmoji: '🚀', levelColor: '#10B981', feedback: 'Good technical understanding' },
-          score: 7.5,
-          level: 'Advanced',
-          levelEmoji: '🚀',
-          levelColor: '#10B981',
-          feedback: 'Good technical understanding'
-        }
-      ];
-
-      const unattemptedSkippedEvals = skippedQuestions.map(sq => ({
-        questionNumber: sq.questionNumber,
-        question: sq.question,
-        answer: 'Skipped by candidate',
-        evaluation: {
-          score: 0.0,
-          level: 'Skipped',
-          levelEmoji: '⏭️',
-          levelColor: '#8B5CF6',
-          feedback: 'Candidate chose to skip this question during the interview session.'
-        },
-        day: (sq.questionNumber % 30) + 1,
-        topic: sq.question.title,
-        snippet: 'Question Skipped',
-        score: 0.0,
-        level: 'Skipped',
-        levelEmoji: '⏭️',
-        levelColor: '#8B5CF6',
-        feedback: 'Candidate chose to skip this question during the interview session.',
-        isSkipped: true
-      }));
-
-      const allReportEvaluations = [...validEvals, ...unattemptedSkippedEvals].sort((a, b) => a.questionNumber - b.questionNumber);
-      const scores = validEvals.map(e => e.score || 7.0);
-      let avgScore = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) : 75;
-
-      let recommendation = 'Hire';
-      if (avgScore >= 85) recommendation = 'Strong Hire';
-      else if (avgScore >= 70) recommendation = 'Hire';
-      else if (avgScore >= 55) recommendation = 'Lean Hire';
-      else recommendation = 'Needs Development';
-
-      let dominantLevel = avgScore >= 88 ? 'EXPERT' : avgScore >= 72 ? 'ADVANCED' : avgScore >= 55 ? 'INTERMEDIATE' : 'BEGINNER';
-
-      const levelDist = { EXPERT: 0, ADVANCED: 0, INTERMEDIATE: 0, BEGINNER: 0 };
-      const levelHistory = [];
-
-      validEvals.forEach(e => {
-        const lvlKey = (e.level || 'INTERMEDIATE').toUpperCase();
-        if (levelDist[lvlKey] !== undefined) {
-          levelDist[lvlKey]++;
-        } else {
-          levelDist.INTERMEDIATE++;
-        }
-        levelHistory.push({
-          questionNumber: e.questionNumber,
-          label: e.level || 'Advanced',
-          score: e.score || 7.5,
-          color: e.levelColor || '#10B981',
-          emoji: e.levelEmoji || '🚀'
-        });
+      // 🤖 Gemini AI analyzes all Q&A pairs to compile the final report
+      const aiReport = await generateFinalReport({
+        candidateName: user.name,
+        userLevel,
+        candidateRole,
+        evaluationsHistory: validEvals,
+        coveredCategories,
+        skippedQuestions
       });
 
-      let narrativeText = `Candidate demonstrated ${dominantLevel.toLowerCase()} competency across ${validEvals.length} evaluated scenarios in the ${selectedRound}.`;
-      let scoresObj = {
-        confidence: lastHiddenState?.confidence || Math.min(95, Math.max(50, Math.round(avgScore * 0.96))),
-        technicalDepth: lastHiddenState?.technical_depth || Math.min(96, Math.max(45, Math.round(avgScore * 0.92))),
-        reasoning: lastHiddenState?.reasoning || Math.min(98, Math.max(50, Math.round(avgScore * 0.94))),
-        communication: lastHiddenState?.communication || Math.min(99, Math.max(60, Math.round(avgScore * 1.02))),
-        conceptualDepth: Math.min(98, Math.max(50, Math.round(avgScore * 1.02))),
-        tradeoffAwareness: Math.max(50, Math.round(avgScore * 0.95)),
-        engineeringClarity: Math.min(95, Math.max(50, Math.round(avgScore * 0.98))),
-        productionRealism: Math.min(96, Math.max(50, Math.round(avgScore * 0.96)))
-      };
-      let keyStrengthsList = validEvals.flatMap(e => e.evaluation?.strengths || e.strengths || ['Strong reasoning']);
-      let areasForImprovementList = validEvals.flatMap(e => e.evaluation?.gaps || e.improvements || ['Incorporate specific parameters']);
-      let actionableStepsList = [
-        `Architect and benchmark core trade-offs for ${selectedRound}.`,
-        "Implement end-to-end telemetry and failure recovery handles.",
-        "Refine trade-off explanations and Big-O efficiency metrics."
-      ];
+      // Level distribution from actual per-answer evaluations
+      const levelDist = { EXPERT: 0, ADVANCED: 0, INTERMEDIATE: 0, BEGINNER: 0 };
+      const levelHistory = [];
+      validEvals.forEach(e => {
+        const k = (e.level || 'INTERMEDIATE').toUpperCase();
+        if (levelDist[k] !== undefined) levelDist[k]++;
+        else levelDist.INTERMEDIATE++;
+        levelHistory.push({ questionNumber: e.questionNumber, label: e.level || 'Advanced', score: e.score || 5.0, color: e.levelColor || '#10B981', emoji: e.levelEmoji || '🚀' });
+      });
 
-      // Call Gemini API to generate tailored result dashboard!
-      try {
-        const geminiAnalysis = await generateFinalReportAnalysis({
-          candidateName: user.name,
-          roundType: selectedRound,
-          userLevel,
-          QnAHistory: allReportEvaluations
-        });
-
-        if (geminiAnalysis) {
-          if (geminiAnalysis.overallScore) avgScore = geminiAnalysis.overallScore;
-          if (geminiAnalysis.recommendation) recommendation = geminiAnalysis.recommendation;
-          if (geminiAnalysis.dominantLevel) dominantLevel = geminiAnalysis.dominantLevel;
-          if (geminiAnalysis.narrative) narrativeText = geminiAnalysis.narrative;
-          if (geminiAnalysis.scores) {
-            scoresObj.confidence = geminiAnalysis.scores.confidence || scoresObj.confidence;
-            scoresObj.technicalDepth = geminiAnalysis.scores.technicalDepth || scoresObj.technicalDepth;
-            scoresObj.reasoning = geminiAnalysis.scores.reasoning || scoresObj.reasoning;
-            scoresObj.communication = geminiAnalysis.scores.communication || scoresObj.communication;
-          }
-          if (geminiAnalysis.keyStrengths?.length) keyStrengthsList = geminiAnalysis.keyStrengths;
-          if (geminiAnalysis.areasForImprovement?.length) areasForImprovementList = geminiAnalysis.areasForImprovement;
-          if (geminiAnalysis.actionableSteps?.length) actionableStepsList = geminiAnalysis.actionableSteps;
-        }
-      } catch (gemErr) {
-        console.warn("Gemini final report synthesis fallback:", gemErr);
-      }
+      const avgAnswerRaw = validEvals.length > 0
+        ? validEvals.reduce((sum, e) => sum + (e.score || 0), 0) / validEvals.length
+        : 0;
 
       const feedbackReport = {
         candidateName: user.name,
-        roundType: selectedRound,
         totalQuestions: validEvals.length,
         totalSkipped: unattemptedSkippedEvals.length,
-        coveredDays: Array.from(coveredCategories).length ? Array.from(coveredCategories) : [selectedRound],
-        overallScore: avgScore,
-        avgAnswerScore: (avgScore / 10).toFixed(1),
-        recommendation,
-        dominantLevel,
-        narrative: narrativeText,
-        trendEmoji: avgScore >= 75 ? '📈' : '📊',
-        performanceTrend: avgScore >= 75 ? 'improving' : 'steady',
+        coveredDays: Array.from(coveredCategories).length ? Array.from(coveredCategories) : ['RAG Architecture', 'Vector DBs', 'Agentic AI'],
+        overallScore: aiReport.overallScore,
+        avgAnswerScore: avgAnswerRaw.toFixed(1),
+        recommendation: aiReport.recommendation,
+        dominantLevel: aiReport.dominantLevel,
+        narrative: aiReport.narrative,
+        trendEmoji: aiReport.trendEmoji || '📊',
+        performanceTrend: aiReport.performanceTrend || 'consistent',
         levelDistribution: levelDist,
-        levelHistory: levelHistory,
-        scores: scoresObj,
+        levelHistory,
+        scores: aiReport.competencyScores || {
+          conceptualDepth: aiReport.overallScore,
+          tradeoffAwareness: aiReport.overallScore,
+          engineeringClarity: aiReport.overallScore,
+          productionRealism: aiReport.overallScore
+        },
         topicEvaluations: allReportEvaluations,
-        keyStrengths: keyStrengthsList,
-        areasForImprovement: areasForImprovementList,
-        actionableSteps: actionableStepsList
+        keyStrengths: aiReport.keyStrengths || [],
+        areasForImprovement: aiReport.areasForImprovement || [],
+        actionableSteps: aiReport.actionableSteps || []
       };
 
       onComplete(feedbackReport);
+    } catch (err) {
+      console.error('Report generation error:', err);
+      // Emergency fallback — compute directly from scores
+      const scores = validEvals.map(e => e.score || 0);
+      const avgScore = scores.length ? Math.round((scores.reduce((a,b) => a+b,0) / scores.length) * 10) : 50;
+      onComplete({
+        candidateName: user.name,
+        totalQuestions: validEvals.length,
+        totalSkipped: unattemptedSkippedEvals.length,
+        coveredDays: Array.from(coveredCategories),
+        overallScore: avgScore,
+        avgAnswerScore: (avgScore / 10).toFixed(1),
+        recommendation: avgScore >= 85 ? 'Strong Hire' : avgScore >= 70 ? 'Hire' : avgScore >= 55 ? 'Lean Hire' : 'Needs Development',
+        dominantLevel: avgScore >= 85 ? 'EXPERT' : avgScore >= 70 ? 'ADVANCED' : avgScore >= 55 ? 'INTERMEDIATE' : 'BEGINNER',
+        narrative: 'Assessment complete. AI report generation encountered an error — scores computed directly from evaluations.',
+        trendEmoji: '📊', performanceTrend: 'consistent',
+        levelDistribution: { EXPERT: 0, ADVANCED: 0, INTERMEDIATE: 0, BEGINNER: 0 },
+        levelHistory: [],
+        scores: { conceptualDepth: avgScore, tradeoffAwareness: avgScore, engineeringClarity: avgScore, productionRealism: avgScore },
+        topicEvaluations: allReportEvaluations,
+        keyStrengths: ['Interview completed'],
+        areasForImprovement: ['Review all topic areas'],
+        actionableSteps: ['Continue practicing RAG, MCP, and vLLM topics.']
+      });
     } finally {
-      setIsSynthesizingReport(false);
+      setIsGeneratingReport(false);
     }
   };
 
@@ -513,10 +399,10 @@ export default function DynamicInterview({ user, onComplete }) {
           <div className="di-brand">
             <Bot size={20} className="text-cyan" />
             <span className="font-bold">InterviewAgent.AI</span>
-            <span className="di-badge-live">● AI ASSESSOR ENGINE ACTIVE</span>
+            <span className="di-badge-live">● GEMINI 3.5 FLASH LITE ACTIVE</span>
           </div>
 
-          {stage !== 'greeting' && stage !== 'level_select' && stage !== 'review_skipped_prompt' && (
+          {stage !== 'greeting' && stage !== 'level_select' && stage !== 'review_skipped_prompt' && stage !== 'generating_report' && (
             <div className="di-progress-bar-container">
               <div className="di-progress-track">
                 <div
@@ -547,17 +433,6 @@ export default function DynamicInterview({ user, onComplete }) {
 
       <main className="di-main-content" ref={containerRef}>
 
-        {/* ── REPORT SYNTHESIS LOADING SCREEN ── */}
-        {isSynthesizingReport && (
-          <div className="di-card di-eval-result-card animate-fade-in text-center p-8">
-            <div className="di-icon-badge mx-auto mb-4 bg-cyan-subtle" style={{ width: 64, height: 64, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
-              <RefreshCw size={36} className="spin-icon text-cyan" />
-            </div>
-            <h2 className="text-xl font-bold text-main mb-2">Synthesizing AI Evaluation Dashboard...</h2>
-            <p className="text-sm text-dim">Generating personalized analysis for {selectedRound} using AI Engine.</p>
-          </div>
-        )}
-
         {/* ── STAGE 1: GREETING ── */}
         {stage === 'greeting' && (
           <div className="di-card di-greeting-card animate-fade-in">
@@ -570,7 +445,7 @@ export default function DynamicInterview({ user, onComplete }) {
             </h1>
 
             <p className="di-greeting-subtitle">
-              Welcome to your technical interview session! I will be your Senior AI Engineering Interviewer powered by <strong className="text-cyan">Advanced AI Engine</strong>.
+              Welcome to your technical interview session! I will be your Senior AI Engineering Interviewer powered by <strong className="text-cyan">Gemini 3.5 Flash Lite</strong>.
             </p>
 
             <div className="di-feature-grid">
@@ -592,7 +467,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 <Zap className="text-emerald" size={20} />
                 <div>
                   <h4>Step-by-Step Live Feedback</h4>
-                  <p>Get instant AI evaluation & live question timers during your interview.</p>
+                  <p>Get instant Gemini evaluation & live question timers during your interview.</p>
                 </div>
               </div>
             </div>
@@ -610,74 +485,59 @@ export default function DynamicInterview({ user, onComplete }) {
           </div>
         )}
 
-        {/* ── STAGE 2: ROUND SELECTION, LEVEL & QUESTION SLIDER (8 to 20 Qs) ── */}
+        {/* ── STAGE 2: LEVEL SELECTION, ROLE & QUESTION SLIDER (8 to 20 Qs) ── */}
         {stage === 'level_select' && (
           <div className="di-card di-level-card animate-fade-in">
 
-            {/* 🎯 Interview Round Selection */}
-            <div className="di-round-select-box">
-              <label className="text-xs font-mono font-bold text-cyan text-uppercase mb-2 block">
-                🎯 Choose Interview Practice Round:
-              </label>
-              <div className="di-rounds-grid">
-                {INTERVIEW_ROUNDS.map(r => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={`di-round-card ${selectedRound === r.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedRound(r.id)}
-                    style={{ '--accent-color': r.color }}
-                  >
-                    <div className="di-round-icon">{r.icon}</div>
-                    <div className="di-round-info">
-                      <div className="di-round-title">{r.name}</div>
-                      <div className="di-round-desc">{r.desc}</div>
-                    </div>
-                    <div className="di-round-check">
-                      <CheckCircle2 size={18} />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Persona Role Selection */}
+            {/* Persona Role Selection Cards */}
             <div className="di-role-select-box mb-4">
-              <label className="text-xs font-mono font-bold text-muted text-uppercase mb-2 block">
-                👤 Select Candidate Persona / Role:
+              <label className="text-xs font-mono font-bold text-uppercase mb-2 block" style={{ color: '#FFFFFF', letterSpacing: '0.5px' }}>
+                🎯 Select Candidate Persona / Role:
               </label>
               <div className="di-role-buttons-grid">
                 {[
                   { key: 'Student', label: '🎓 CS Student / Learner', desc: 'Foundational theory & vector algorithms' },
                   { key: 'Researcher', label: '🔬 AI Researcher / PhD', desc: 'SOTA papers, math & loss functions' },
                   { key: 'Engineer', label: '💻 AI Software Engineer', desc: 'Production RAG, vLLM & MCP pipelines' }
-                ].map(r => (
-                  <button
-                    key={r.key}
-                    type="button"
-                    className={`di-role-btn ${candidateRole === r.key ? 'active' : ''}`}
-                    onClick={() => setCandidateRole(r.key)}
-                  >
-                    <div className="font-bold text-main">{r.label}</div>
-                    <div className="text-xs text-dim mt-1">{r.desc}</div>
-                  </button>
-                ))}
+                ].map(r => {
+                  const isSelected = candidateRole === r.key;
+                  return (
+                    <button
+                      key={r.key}
+                      className={`di-role-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => setCandidateRole(r.key)}
+                      style={{
+                        backgroundColor: isSelected ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                        border: isSelected ? '2px solid #00F2FE' : '1px solid rgba(255, 255, 255, 0.2)',
+                        boxShadow: isSelected ? '0 0 18px rgba(0, 242, 254, 0.4)' : 'none',
+                        borderRadius: '14px',
+                        padding: '0.9rem 1rem',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        color: '#FFFFFF'
+                      }}
+                    >
+                      <div className="font-bold text-sm" style={{ color: '#FFFFFF', lineHeight: '1.3' }}>{r.label}</div>
+                      <div className="text-xs mt-1" style={{ color: '#F5F5F5', opacity: 0.95, lineHeight: '1.4' }}>{r.desc}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="di-level-header">
               <Target size={24} className="text-cyan" />
               <h2>Select Technical Proficiency Level:</h2>
-              <p>Tailors question depth for <strong className="text-cyan">{selectedRound}</strong>.</p>
+              <p>Tailors question depth for <strong className="text-cyan">{candidateRole}</strong> role.</p>
             </div>
 
             <div className="di-levels-grid">
               {LEVELS.map((lvl) => (
                 <button
                   key={lvl.key}
-                  type="button"
                   className={`di-level-option ${userLevel === lvl.key ? 'selected' : ''}`}
-                  onClick={() => setUserLevel(lvl.key)}
+                  onClick={() => handleSelectLevel(lvl.key)}
                   style={{ '--accent-color': lvl.color }}
                 >
                   <div className="di-level-emoji">{lvl.emoji}</div>
@@ -693,7 +553,7 @@ export default function DynamicInterview({ user, onComplete }) {
             </div>
 
             {/* Slider strictly from 8 to 20 questions, defaulting to 8 */}
-            <div className="di-target-slider-box mb-4">
+            <div className="di-target-slider-box">
               <label className="text-sm font-semibold text-muted">
                 Target Interview Length: <span className="text-cyan font-mono font-bold">{totalTargetQuestions} Questions</span>
               </label>
@@ -710,24 +570,6 @@ export default function DynamicInterview({ user, onComplete }) {
                 <span className="text-xs text-dim font-mono">20 Qs</span>
               </div>
             </div>
-
-            <button
-              className="btn btn-primary btn-lg w-full mt-3 py-3"
-              onClick={() => handleSelectLevel(userLevel)}
-              disabled={isEvaluating}
-            >
-              {isEvaluating ? (
-                <>
-                  <RefreshCw size={20} className="spin-icon" />
-                  <span>Generating {selectedRound} Q1...</span>
-                </>
-              ) : (
-                <>
-                  <span>Start My {selectedRound} Session 🚀</span>
-                  <ArrowRight size={20} />
-                </>
-              )}
-            </button>
           </div>
         )}
 
@@ -771,7 +613,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 <span className="word-count wc-valid font-mono">
                   ✍️ {wordCount} words typed · No word limit
                 </span>
-                <span className="text-xs text-dim">Evaluated live by Advanced AI Engine</span>
+                <span className="text-xs text-dim">Evaluated live by Gemini 3.5 Flash Lite</span>
               </div>
             </div>
 
@@ -856,37 +698,8 @@ export default function DynamicInterview({ user, onComplete }) {
                       {lastEvaluation.score.toFixed(1)} / 10
                     </span>
                   </div>
-                </div>
 
-                {/* 🧠 Internal Thinking Process Block */}
-                {lastThinkingProcess && (
-                  <div className="di-thinking-card">
-                    <div className="thinking-card-header font-mono text-cyan">
-                      <Brain size={16} />
-                      <span>&lt;thinking_process&gt; Internal Evaluation & Probing Matrix</span>
-                    </div>
-                    <div className="thinking-card-grid">
-                      <div className="thinking-item">
-                        <span className="ti-label">🎯 Accuracy Assessment:</span>
-                        <p className="ti-text">{lastThinkingProcess.accuracy_assessment}</p>
-                      </div>
-                      <div className="thinking-item">
-                        <span className="ti-label">🔍 Knowledge Gaps:</span>
-                        <p className="ti-text">{lastThinkingProcess.knowledge_gaps}</p>
-                      </div>
-                      <div className="thinking-item">
-                        <span className="ti-label">🚀 Next Question Probing Plan:</span>
-                        <p className="ti-text">{lastThinkingProcess.next_question_plan}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="di-eval-feedback-box">
-                  <h3 className="di-eval-box-title">
-                    <Brain size={18} className="text-cyan" />
-                    Step-by-Step AI Evaluation & Technical Analysis
-                  </h3>
+                  <h3 className="di-eval-feedback-title">Step-by-Step Gemini Evaluation</h3>
                   <p className="di-eval-feedback-text">{lastEvaluation.feedback}</p>
                 </div>
 
@@ -962,6 +775,54 @@ export default function DynamicInterview({ user, onComplete }) {
                 <CheckCircle2 size={18} className="text-emerald" />
                 <span>Submit & View Final Report Now</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Gemini AI Report Generation Loading Screen ── */}
+        {stage === 'generating_report' && (
+          <div className="di-card animate-fade-in" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+            <div style={{ marginBottom: '2rem' }}>
+              <div style={{
+                width: '80px', height: '80px', borderRadius: '50%',
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '3px solid rgba(245, 158, 11, 0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 1.5rem',
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }}>
+                <Brain size={36} style={{ color: '#F59E0B' }} />
+              </div>
+              <h2 style={{ color: '#FDFBF7', fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem' }}>
+                🤖 Gemini AI is Analyzing Your Interview
+              </h2>
+              <p style={{ color: '#D1C4B9', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 2rem', lineHeight: 1.6 }}>
+                Reviewing all your answers, verifying technical accuracy, computing competency scores, and generating your personalized structured report...
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '400px', margin: '0 auto' }}>
+              {[
+                '📊 Calculating weighted performance scores...',
+                '🔍 Verifying technical accuracy across all answers...',
+                '💡 Identifying key strengths & improvement areas...',
+                '🗺️ Building your personalized growth roadmap...'
+              ].map((step, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  background: 'rgba(35, 21, 13, 0.6)',
+                  border: '1px solid rgba(245, 158, 11, 0.15)',
+                  borderRadius: '10px', padding: '0.65rem 1rem',
+                  color: '#D1C4B9', fontSize: '0.85rem',
+                  animation: `fadeInUp 0.4s ease ${i * 0.15}s both`
+                }}>
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '2.5rem', color: '#A08060', fontSize: '0.8rem', fontStyle: 'italic' }}>
+              This usually takes 5–15 seconds...
             </div>
           </div>
         )}
