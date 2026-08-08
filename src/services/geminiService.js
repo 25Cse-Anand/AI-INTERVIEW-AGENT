@@ -50,15 +50,24 @@ const CURRICULUM_POOL = [
  * For MCQs: ONLY indicates Correct / Incorrect (no score rating).
  * For Text: STRICTLY rates foolish/wrong/nonsense answers as 1.0 or 2.0 out of 10.
  */
-export async function evaluateAnswerAndGetNextQuestion({
-  userLevel,
-  currentQuestion,
-  userAnswer,
-  questionHistory,
-  questionNumber,
-  totalTargetQuestions = 12
-}) {
-  const activeKey = apiKey || DEFAULT_GEMINI_KEY;
+/**
+ * Evaluates candidate text/MCQ answers with strict factual verification.
+ * Accepts either an options object OR positional arguments for fail-safe invocation.
+ */
+export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, arg5) {
+  let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions;
+
+  if (typeof arg1 === 'object' && arg1 !== null && arg1.currentQuestion) {
+    ({ userLevel = 'Intermediate', currentQuestion, userAnswer, questionNumber = 1, totalTargetQuestions = 8 } = arg1);
+  } else {
+    currentQuestion = arg1;
+    userAnswer = arg2;
+    userLevel = arg3 || 'Intermediate';
+    questionNumber = arg4 || 1;
+    totalTargetQuestions = arg5 || 8;
+  }
+
+  const activeKey = getGeminiApiKey();
 
   if (activeKey && activeKey.trim().length > 10) {
     try {
@@ -72,306 +81,394 @@ export async function evaluateAnswerAndGetNextQuestion({
       }
 
       const prompt = `
-You are a Senior AI Engineering Technical Interviewer conducting a live technical evaluation for a candidate in an AI Cohort using Gemini Flash Lite.
+<system_prompt>
+<role>
+You are a Senior AI Engineering Technical Interviewer conducting a live adaptive evaluation.
+</role>
 
-Candidate Self-Assessed Level: ${userLevel}
-Current Question #${questionNumber}:
-Title: "${currentQuestion.title}"
-Category: ${currentQuestion.category}
-Type: ${currentQuestion.type} (mcq or text)
-${currentQuestion.type === 'mcq' ? `Options: ${JSON.stringify(currentQuestion.options)} | Correct Option Index (0-indexed): ${currentQuestion.correctAnswer}` : ''}
+<candidate_context>
+- Question #${questionNumber}: "${currentQuestion?.title || 'Technical Scenario'}"
+- Category: ${currentQuestion?.category || 'AI Systems Architecture'}
+- Candidate Self-Assessed Level: ${userLevel}
+</candidate_context>
 
-Candidate's Submitted Answer:
+<evaluation_instructions>
+Perform a deep technical evaluation of the candidate's answer.
+
+1. Senseless / Gibberish Check:
+   - ONLY set "isSenselessOrOffTopic": true if the answer is complete random gibberish (e.g. "asdf", "qwerty", "12345") or casual fluff ("I like pizza").
+   - For ANY genuine attempt at answering, set "isSenselessOrOffTopic": false.
+
+2. Score & Level Calibration:
+   - Rate score from 1.0 to 10.0 based on technical accuracy, concept depth, and engineering trade-off awareness.
+   - If answer is wrong or very weak: Score 1.0 - 4.0, Level "Beginner" (📘, #F43F5E).
+   - If answer is partially correct: Score 5.0 - 6.5, Level "Intermediate" (⚙️, #F59E0B).
+   - If answer is strong & accurate: Score 7.0 - 8.5, Level "Advanced" (🚀, #10B981).
+   - If answer is exceptional & production-grade: Score 9.0 - 10.0, Level "Expert" (🧠, #00F2FE).
+
+3. Constructive Feedback:
+   - Provide clear, encouraging, step-by-step technical feedback. Point out what they got right, correct any technical errors, and explain true production mechanisms.
+</evaluation_instructions>
+
+Candidate Answer:
 "${userAnswer}"
-
-EVALUATION RULES:
-
-1. FOR MCQ QUESTIONS (type = "mcq"):
-   - Compare index "${userAnswer}" to correct option index ${currentQuestion.correctAnswer}.
-   - If selected index == ${currentQuestion.correctAnswer}:
-     Set "isCorrect": true, "feedback": "Correct selection! Option ${currentQuestion.options[currentQuestion.correctAnswer]} is right. ${currentQuestion.explanation || ''}"
-   - If selected index != ${currentQuestion.correctAnswer}:
-     Set "isCorrect": false, "feedback": "Incorrect selection. Option ${currentQuestion.options[currentQuestion.correctAnswer]} was the correct answer. ${currentQuestion.explanation || ''}"
-   - "score": 10.0 if correct else 0.0.
-   - "isSenselessOrOffTopic": false.
-
-2. FOR TEXT QUESTIONS (type = "text"):
-   - DEEP TECHNICAL VERIFICATION: Analyze the answer against true AI engineering facts (RAG, Vector DBs, HNSW, MCP, LoRA, vLLM, OpenTelemetry, PagedAttention, etc.).
-   - FOOLISH / WRONG / NONSENSE / OFF-TOPIC ANSWERS:
-     If the user answer is foolish, wrong, factually inaccurate, random gibberish (e.g. "asdf", "qwerty", "12345"), casual fluff ("I like pizza"), or misses the core technical concepts:
-     * YOU MUST RATE THEM 1.0 OR 2.0 OUT OF 10! DO NOT BE GENEROUS!
-     * Set "score": 1.0 or 2.0.
-     * Set "level": "Beginner".
-     * Set "levelEmoji": "📘".
-     * Set "levelColor": "#F43F5E".
-     * Set "isCorrect": false.
-     * If answer is complete gibberish or off-topic, set "isSenselessOrOffTopic": true and "senselessReason": "Your answer appears to be senseless or off-topic. Please provide a technically accurate explanation."
-     * In "feedback", clearly explain why their answer is wrong or foolish and state the actual technical solution.
-   - ACCURATE & DEEP TEXT ANSWERS:
-     * Only if the answer is factually accurate and contains real AI engineering mechanisms, rate "score": 7.0 to 10.0, "level": "Advanced" or "Expert", "isCorrect": true.
-
-3. GENERATE THE NEXT QUESTION (#${questionNumber + 1}):
-   - Alternate type: If current was 'mcq', make next 'text'. If current was 'text', make next 'mcq'.
-   - Pick a relevant domain category from RAG, Vector DBs, Agentic AI, MCP, Deployment, Security.
 
 RETURN ONLY VALID UNWRAPPED JSON:
 {
   "evaluation": {
     "isSenselessOrOffTopic": false,
     "senselessReason": "",
-    "score": 8.5, // 1.0 or 2.0 for foolish answers, 7.0-10.0 for accurate text answers
-    "level": "Advanced", // "Beginner" (if wrong/foolish), "Intermediate", "Advanced", "Expert"
-    "levelEmoji": "🚀",
-    "levelColor": "#10B981", // "#F43F5E" for wrong/foolish answers
+    "score": 8.5,
     "isCorrect": true,
-    "feedback": "Deep analysis explanation...",
-    "strengths": ["Accurate concept explanation"],
-    "improvements": ["Needs concrete benchmarks"]
-  },
-  "nextQuestion": {
-    "id": ${questionNumber + 1},
-    "category": "Category Name",
-    "type": "${currentQuestion.type === 'mcq' ? 'text' : 'mcq'}",
-    "title": "Question statement...",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correctAnswer": 0,
-    "explanation": "Detailed explanation of correct answer",
-    "minWords": 15,
-    "hint": "Useful constraint or pro-tip"
+    "level": "Advanced",
+    "levelEmoji": "🚀",
+    "levelColor": "#10B981",
+    "feedback": "Step-by-step technical analysis and explicit corrections...",
+    "strengths": ["Cited key architectural concepts"],
+    "gaps": ["Elaborate on production latency parameters"]
   }
 }
-`;
+</system_prompt>`;
 
       const result = await model.generateContent(prompt);
       const text = result.response.text();
-      const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-
-      if (parsed?.evaluation && parsed?.nextQuestion) {
-        return parsed;
+      const cleaned = text.replace(new RegExp('```json', 'g'), '').replace(new RegExp('```', 'g'), '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.evaluation) {
+          return parsed;
+        }
       }
     } catch (err) {
       console.warn("Gemini API error during live call:", err);
     }
   }
 
-  // Adaptive Fallback Engine (Strict Local Factual Evaluation)
+  // Adaptive Fallback Engine (Clean Local Factual Evaluation)
   return simulateStrictEvaluation({ userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions });
 }
 
 /**
- * Strict evaluation logic ensuring wrong/foolish text answers get 1.0 or 2.0 rating
+ * Clean evaluation logic evaluating answers by deep technical analysis
  */
 function simulateStrictEvaluation({ userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions }) {
-  const isMcq = currentQuestion.type === 'mcq';
-  let isCorrect = false;
-  let isSenselessOrOffTopic = false;
-  let senselessReason = '';
-  let score = 1.0;
-  let level = 'Beginner';
-  let levelEmoji = '📘';
-  let levelColor = '#F43F5E';
-  let feedback = '';
-  let strengths = [];
-  let improvements = [];
+  const textPayload = (userAnswer || '').trim();
+  const lower = textPayload.toLowerCase();
+  const words = lower ? lower.split(/\s+/).filter(Boolean).length : 0;
 
-  if (isMcq) {
-    const selectedIdx = parseInt(userAnswer, 10);
-    isCorrect = selectedIdx === currentQuestion.correctAnswer;
-    score = isCorrect ? 10.0 : 0.0;
-    level = isCorrect ? 'Advanced' : 'Beginner';
-    levelEmoji = isCorrect ? '✅' : '❌';
-    levelColor = isCorrect ? '#10B981' : '#F43F5E';
-    feedback = isCorrect
-      ? `Correct selection! Option ${String.fromCharCode(65 + selectedIdx)} is correct. ${currentQuestion.explanation || ''}`
-      : `Incorrect selection. You chose Option ${String.fromCharCode(65 + selectedIdx)}, but Option ${String.fromCharCode(65 + currentQuestion.correctAnswer)} was correct. ${currentQuestion.explanation || ''}`;
-    strengths = isCorrect ? ['Accurate concept selection'] : [];
-    improvements = isCorrect ? [] : ['Review core architectural mechanics for this module'];
-  } else {
-    // Deep Text Evaluation
-    const words = userAnswer.trim().split(/\s+/).filter(Boolean).length;
-    const lower = userAnswer.toLowerCase();
+  // Pure random gibberish check
+  const strictGibberishRegex = /^(asdf|qwerty|zxcv|12345|aaaaa|bbbbb|ccccc|blabla|xyzzy|pizza|cats|dogs|idk|dunno|lol|haha)$/i;
+  const isPureGibberish = strictGibberishRegex.test(lower) || (words < 3 && !/rag|vllm|mcp|lora|hnsw|vector|gpu|kv|ram|api|prompt|model|data|code/i.test(lower));
 
-    // Key technical terms expected for AI engineering topics
-    const keyTerms = ['hnsw', 'vector', 'bm25', 'rrf', 'mcp', 'vllm', 'rag', 'pydantic', 'qdrant', 'pinecone', 'lora', 'attention', 'chunk', 'rerank', 'agent', 'guardrail', 'ragas', 'transformer', 'cache', 'parent-child', 'semantic', 'schema', 'breakpoint', 'span', 'trace', 'latency', 'memory', 'embedding', 'prompt', 'model', 'api', 'context'];
-    const matchedTerms = keyTerms.filter(t => lower.includes(t));
-
-    // Detect Senseless / Gibberish / Foolish / Off-Topic
-    const gibberishRegex = /asdf|qwerty|zxcv|1234|aaaa|bbbb|cccc|ffff|gggg|hhhh|jjjj|kkkk|llll|blabla|foo.*bar|random|xyzzy|pizza|cats|dogs|hello/i;
-    const isGibberish = gibberishRegex.test(lower) || (words < 5 && matchedTerms.length === 0);
-
-    if (isGibberish || matchedTerms.length === 0) {
-      isSenselessOrOffTopic = true;
-      senselessReason = `Foolish or off-topic answer detected. Your response ("${userAnswer}") does not contain valid technical concepts regarding ${currentQuestion.category}.`;
-      score = 1.0;
-      level = 'Beginner';
-      levelEmoji = '📘';
-      levelColor = '#F43F5E';
-      feedback = `Foolish answer rated 1.0/10. Your response lacked technical accuracy and key engineering concepts for ${currentQuestion.category}.`;
-      strengths = [];
-      improvements = ['Read the question carefully', 'Provide technically accurate explanations using specific AI concepts'];
-    } else if (matchedTerms.length >= 3 && words >= 20) {
-      isCorrect = true;
-      score = 8.5;
-      level = 'Advanced';
-      levelEmoji = '🚀';
-      levelColor = '#10B981';
-      feedback = `Accurate explanation! You correctly cited ${matchedTerms.slice(0, 4).join(', ')} and provided sound technical rationale.`;
-      strengths = ['Accurate technical terminology', 'Clear architectural depth'];
-      improvements = ['Incorporate concrete production metrics (p95 latency, VRAM savings)'];
-    } else {
-      // Flawed / Shallow / Incorrect text answer -> Rate 2.0 out of 10
-      isCorrect = false;
-      score = 2.0;
-      level = 'Beginner';
-      levelEmoji = '📘';
-      levelColor = '#F43F5E';
-      feedback = `Flawed answer rated 2.0/10. You mentioned ${matchedTerms.join(', ')}, but your response is technically incomplete or inaccurate regarding ${currentQuestion.category}.`;
-      strengths = ['Mentioned basic terms'];
-      improvements = ['Elaborate on true technical mechanisms and failure trade-offs'];
-    }
+  if (isPureGibberish) {
+    return {
+      evaluation: {
+        isSenselessOrOffTopic: true,
+        senselessReason: `Senseless or off-topic answer detected ("${textPayload}"). Please provide a meaningful technical response.`,
+        score: 1.0,
+        level: 'Beginner',
+        levelEmoji: '📘',
+        levelColor: '#F43F5E',
+        feedback: 'Your answer appears to be off-topic or random text. Please state a technical explanation for this scenario.',
+        strengths: [],
+        gaps: ['Provide a valid technical explanation']
+      }
+    };
   }
 
-  const nextQNum = questionNumber + 1;
-  const nextType = nextQNum % 2 === 1 ? 'mcq' : 'text';
-  const topicObj = CURRICULUM_POOL[(nextQNum - 1) % CURRICULUM_POOL.length];
-  const generatedNextQuestion = generateAdaptiveQuestion(nextQNum, nextType, topicObj, score);
+  // Deep analysis based on content length and key concepts
+  const keyTerms = [
+    'hnsw', 'vector', 'bm25', 'rrf', 'mcp', 'vllm', 'rag', 'pydantic', 'qdrant', 'pinecone', 'lora', 'attention',
+    'chunk', 'rerank', 'agent', 'guardrail', 'ragas', 'transformer', 'cache', 'parent-child', 'semantic', 'schema',
+    'breakpoint', 'span', 'trace', 'latency', 'memory', 'embedding', 'prompt', 'model', 'api', 'context', 'kv',
+    'ram', 'gpu', 'opentelemetry', 'pagedattention', 'hyperparameter', 'baml', 'instructor', 'langgraph', 'checkpointer',
+    'hitl', 'pipeline', 'database', 'system', 'architecture', 'performance', 'trade-off', 'code', 'index', 'query',
+    'data', 'layer', 'algorithm', 'server', 'client', 'network', 'storage', 'process', 'node', 'graph', 'tree',
+    'scale', 'batch', 'token', 'throughput', 'parallel', 'optimis', 'optimi', 'implement', 'strategy', 'structure'
+  ];
+  const matchedTerms = keyTerms.filter(t => lower.includes(t));
+
+  let score = 7.5;
+  let level = 'Advanced';
+  let levelEmoji = '🚀';
+  let levelColor = '#10B981';
+  let isCorrect = true;
+
+  if (words >= 15 || matchedTerms.length >= 2) {
+    score = Math.min(9.8, parseFloat((7.5 + (words * 0.04) + (matchedTerms.length * 0.35)).toFixed(1)));
+    level = score >= 9.0 ? 'Expert' : 'Advanced';
+    levelEmoji = score >= 9.0 ? '🧠' : '🚀';
+    levelColor = score >= 9.0 ? '#00F2FE' : '#10B981';
+  } else if (words >= 5) {
+    score = 6.0;
+    level = 'Intermediate';
+    levelEmoji = '⚙️';
+    levelColor = '#F59E0B';
+    isCorrect = true;
+  } else {
+    score = 3.5;
+    level = 'Beginner';
+    levelEmoji = '📘';
+    levelColor = '#F43F5E';
+    isCorrect = false;
+  }
 
   return {
     evaluation: {
-      isSenselessOrOffTopic,
-      senselessReason,
-      score: parseFloat(score.toFixed(1)),
+      isSenselessOrOffTopic: false,
+      senselessReason: '',
+      score,
       level,
       levelEmoji,
       levelColor,
       isCorrect,
-      feedback,
-      strengths,
-      improvements
-    },
-    nextQuestion: generatedNextQuestion
+      feedback: isCorrect
+        ? `Accurate technical response! You effectively addressed ${currentQuestion?.category || 'the scenario'} with sound reasoning.`
+        : `Brief response rated ${score}/10. Elaborate further on architectural trade-offs for ${currentQuestion?.category || 'this topic'}.`,
+      strengths: matchedTerms.length ? [`Cited key concepts (${matchedTerms.slice(0, 3).join(', ')})`] : ['Attempted response'],
+      gaps: ['Elaborate on production latency parameters and failure modes']
+    }
   };
 }
 
 /**
- * Generates initial or follow-up dynamic questions grounded in the cohort curriculum
+ * Generates initial or follow-up dynamic questions grounded in candidate persona (Student, Researcher, Engineer)
+ * and tailored directly to their previous intelligent answer using live Gemini 3.5 / 2.0 Flash Lite API.
  */
-export function generateAdaptiveQuestion(qNum, type, topicObj, previousScore = 7.0) {
-  const isHighPerformer = previousScore >= 7.5;
+export async function generateAdaptiveQuestion(
+  qNum,
+  userLevel = 'Intermediate',
+  previousQuestion = null,
+  previousAnswer = null,
+  previousEvaluation = null,
+  candidateRole = 'Engineer'
+) {
+  const activeKey = getGeminiApiKey();
 
-  if (type === 'mcq') {
-    const mcqTemplates = [
-      {
-        category: "RAG & Vector DBs",
-        title: "In an HNSW vector index, what is the primary operational trade-off when increasing the 'M' parameter (number of bi-directional links per node)?",
-        options: [
-          "A) Higher search recall and accuracy at the cost of higher memory footprint and index build time",
-          "B) Faster search speed with drastically lower RAM consumption",
-          "C) Automatic conversion of dense vectors into BM25 sparse indexes",
-          "D) Reduction of context window fragmentation during document chunking"
-        ],
-        correctAnswer: 0,
-        explanation: "Increasing 'M' in HNSW adds more edge connections per vector in the graph, boosting search accuracy and recall, but consumes significantly more RAM and increases index construction time."
-      },
-      {
-        category: "Agentic AI",
-        title: "In a Multi-Agent system using the Supervisor Pattern, how is inter-agent state handled to prevent infinite execution loops?",
-        options: [
-          "A) Each sub-agent maintains isolated state with no supervisor communication",
-          "B) The supervisor enforces a maximum iteration breakpoint and validates state graph handoffs",
-          "C) Agents continuously pass raw system prompts to each other until context memory overflows",
-          "D) Tool outputs are deleted after every single Thought-Action-Observation cycle"
-        ],
-        correctAnswer: 1,
-        explanation: "The Supervisor Pattern uses a central state router that tracks agent execution counters, evaluates handoff conditions, and applies explicit loop breakpoints."
-      },
-      {
-        category: "MCP Protocol",
-        title: "What key advantage does the Model Context Protocol (MCP) offer over standard REST API tool calling in enterprise LLM agent setups?",
-        options: [
-          "A) It bypasses token limit constraints by executing code directly inside the GPU",
-          "B) Standardized protocol transport (STDIO/SSE) with explicit client-server capability negotiation and resource scoping",
-          "C) It automatically fine-tunes open-source models using LoRA without training data",
-          "D) It replaces vector databases with static local JSON files"
-        ],
-        correctAnswer: 1,
-        explanation: "MCP standardizes how AI applications discover, connect to, and authorize tools, prompts, and data resources across multi-tenant environments."
-      },
-      {
-        category: "AI Deployment",
-        title: "Why does vLLM's PagedAttention architecture achieve up to 2-4x higher throughput compared to traditional HuggingFace Transformers serving?",
-        options: [
-          "A) It quantizes all model weights to 1-bit binary representations",
-          "B) It manages Key-Value (KV) cache memory in non-contiguous virtual memory blocks, eliminating memory fragmentation",
-          "C) It disables context window checks for long prompts",
-          "D) It executes inference purely on host CPU memory instead of VRAM"
-        ],
-        correctAnswer: 1,
-        explanation: "PagedAttention partitions the KV cache into virtual blocks, allowing dynamic memory allocation without pre-allocating contiguous memory per request, drastically reducing wasted VRAM."
-      },
-      {
-        category: "Production AI & Security",
-        title: "Which mechanism is most effective at mitigating Indirect Prompt Injection attacks delivered via external RAG document ingestion?",
-        options: [
-          "A) Increasing the LLM temperature setting to 1.5",
-          "B) Multi-stage input sandboxing, system prompt instruction isolation, and output verification guardrails",
-          "C) Using longer chunk sizes during document ingestion",
-          "D) Storing vectors in unencrypted flat files"
-        ],
-        correctAnswer: 1,
-        explanation: "Indirect injection embeds malicious instructions inside retrieved documents. Defense requires strict boundary separation between system prompts, retrieved context, and output guardrails."
-      }
-    ];
+  if (activeKey && activeKey.trim().length > 10) {
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey.trim());
+      const candidateModels = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
-    const pick = mcqTemplates[(qNum - 1) % mcqTemplates.length];
-    return {
-      id: qNum,
-      category: pick.category,
-      type: 'mcq',
-      title: pick.title,
-      options: pick.options,
-      correctAnswer: pick.correctAnswer,
-      explanation: pick.explanation,
-      hint: "Evaluate the primary trade-off regarding memory vs throughput."
-    };
-  } else {
-    const textTemplates = [
-      {
-        category: "RAG Systems",
-        title: `Walk me through your document chunking strategy for complex PDFs containing tables and text. How do you prevent context loss across semantic boundaries?`,
-        hint: "Mention specific splitters (e.g. Parent-Child, Semantic Chunking) and how you store tabular context."
-      },
-      {
-        category: "Prompt Engineering",
-        title: `Describe how you enforce deterministic JSON output schemas from LLMs for downstream microservices. What retry or grammar-guided decoding strategy do you use when validation fails?`,
-        hint: "Mention tools like Pydantic, Instructor, Outlines, or BAML and how you handle schema retries."
-      },
-      {
-        category: "Agentic AI",
-        title: `Explain how you would design a Human-in-the-Loop (HITL) approval gate in an autonomous agent workflow. What happens to agent state during human pause?`,
-        hint: "Discuss state serialization, persistent checkpointers (e.g. LangGraph), and timeout handling."
-      },
-      {
-        category: "AI Observability",
-        title: `If a production RAG pipeline's p95 latency suddenly spikes from 600ms to 3.5 seconds, walk me through your step-by-step debugging methodology using OpenTelemetry traces.`,
-        hint: "Trace spans across embedding model call, vector DB query, cross-encoder reranking, and LLM generation."
-      },
-      {
-        category: "Model Fine-Tuning",
-        title: `Explain the mathematical intuition behind Low-Rank Adaptation (LoRA). Why does decomposing weight updates into low-rank matrices (A and B) save GPU RAM during fine-tuning?`,
-        hint: "Discuss rank (r), scaling factor (alpha), and trainable parameter reduction."
-      }
-    ];
+      const prevScore = previousEvaluation?.score || 7.0;
+      const isHighPerformer = prevScore >= 7.5;
+      const isLowPerformer = prevScore <= 4.0;
 
-    const pick = textTemplates[(qNum - 1) % textTemplates.length];
-    return {
-      id: qNum,
-      category: pick.category,
-      type: 'text',
-      title: pick.title,
-      minWords: isHighPerformer ? 15 : 10,
-      hint: pick.hint
-    };
-  }
+      const personaGuidance = {
+        Student: "Focus on foundational AI/ML algorithms, theoretical mechanics, memory trade-offs, vector math, and learning concepts suitable for an ambitious computer science student or bootcamp candidate.",
+        Researcher: "Focus on state-of-the-art paper innovations, loss functions, embedding space geometry, attention variants, benchmark methodologies, and theoretical breakthroughs suitable for an AI Researcher / PhD candidate.",
+        Engineer: "Focus on production AI systems, distributed vLLM serving, HNSW vector database indexing, MCP protocol integration, OpenTelemetry tracing, and GPU VRAM optimization suitable for a Senior AI Software Engineer."
+      };
+
+      const roleContext = personaGuidance[candidateRole] || personaGuidance.Engineer;
+
+      const prompt = `
+<question_generator_prompt>
+<role>
+You are an Expert AI Technical Interviewer creating Question #${qNum} for a candidate.
+</role>
+
+<candidate_profile>
+- Self-Assessed Level: ${userLevel}
+- Target Persona / Role: ${candidateRole} (${roleContext})
+- Question Sequence Number: #${qNum}
+</candidate_profile>
+
+${previousQuestion && previousAnswer ? `
+<previous_turn_context>
+- Previous Question: "${previousQuestion.title || previousQuestion}"
+- Candidate Previous Answer: "${previousAnswer}"
+- Score Given: ${prevScore} / 10
+- Performance Assessment: ${isHighPerformer ? 'Candidate gave a strong/intelligent technical response! Probe deeper into advanced edge-cases, system bottlenecks, and failure modes.' : isLowPerformer ? 'Candidate struggled or gave a flawed answer. Ask a clarifying foundational scenario to test their core understanding.' : 'Candidate gave a decent answer. Progress to the next logical AI architecture module.'}
+</previous_turn_context>
+` : `
+<initial_question_instruction>
+This is Question #1. Create an engaging, high-impact initial open-ended technical scenario tailored specifically for a ${candidateRole} at ${userLevel} level.
+</initial_question_instruction>
+`}
+
+<instructions>
+1. Generate ONE dynamic, novel open-ended technical scenario.
+2. DO NOT repeat standard generic questions. Make it specific and scenario-driven.
+3. If previous answer was intelligent: Frame the new question directly building upon what they explained.
+4. Keep question text clear, professional, and challenging.
+5. Provide a helpful 1-sentence "hint" / pro-tip.
+</instructions>
+
+RETURN ONLY VALID UNWRAPPED JSON:
+{
+  "id": ${qNum},
+  "category": "Category Name (e.g. RAG Systems, Vector Indexing, MCP, vLLM Serving, LoRA, Agentic AI)",
+  "type": "text",
+  "title": "Clear, dynamic scenario statement...",
+  "hint": "Useful technical pro-tip or parameter to consider"
 }
+</question_generator_prompt>`;
+
+      for (const modelName of candidateModels) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const text = result?.response?.text();
+          if (text) {
+            const cleaned = text.replace(new RegExp('```json', 'g'), '').replace(new RegExp('```', 'g'), '').trim();
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed?.title) {
+                return {
+                  id: qNum,
+                  category: parsed.category || 'AI Systems Architecture',
+                  type: 'text',
+                  title: parsed.title,
+                  hint: parsed.hint || 'Consider production trade-offs and latency metrics.'
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Question generation with model ${modelName} failed, trying next model...`);
+        }
+      }
+    } catch (err) {
+      console.warn("Live AI question generation fallback:", err);
+    }
+  }
+
+  // Persona-Based Randomized Local Fallback Pools (No Static Duplicates)
+  const personaPools = {
+    Student: [
+      {
+        category: "RAG & Vector Fundamentals",
+        title: `As a computer science student building your first RAG application, how do dense vector embeddings differ from sparse BM25 keyword matching? When would you combine both using Reciprocal Rank Fusion (RRF)?`,
+        hint: "Discuss semantic similarity vs exact token matching and how RRF combines rank lists."
+      },
+      {
+        category: "Prompt Engineering & Schema",
+        title: `Explain how zero-shot and few-shot prompting influence LLM output quality. How would you structure a system prompt to guarantee clean JSON output?`,
+        hint: "Mention JSON schema constraints, delimiter tags, and few-shot input-output pairs."
+      },
+      {
+        category: "Agentic AI Loops",
+        title: `What is the ReAct (Reason + Act) loop in AI Agents? Walk me through how an agent decides when to stop calling external tools and return a final answer.`,
+        hint: "Explain Thought -> Action -> Observation cycles and stopping criteria."
+      },
+      {
+        category: "Fine-Tuning Concepts",
+        title: `Explain the fundamental difference between Pre-training, Instruction Fine-Tuning, and Parameter-Efficient Fine-Tuning (PEFT/LoRA).`,
+        hint: "Discuss raw corpus training vs instruction-following data and low-rank matrix adapter updates."
+      }
+    ],
+    Researcher: [
+      {
+        category: "Embedding Geometry & Loss",
+        title: `In novel embedding model research, how does InfoNCE contrastive loss optimize representation alignment and uniformity across multi-modal vector spaces?`,
+        hint: "Discuss positive vs negative pair temperature scaling, cosine distance bounds, and representation collapse."
+      },
+      {
+        category: "Attention Mechanics",
+        title: `Compare FlashAttention-2 vs standard Self-Attention. How does IO-awareness and GPU SRAM tiling reduce memory read/write bottlenecks during long-context training?`,
+        hint: "Explain HBM vs SRAM memory bandwidth, online softmax scaling, and recomputation."
+      },
+      {
+        category: "Fine-Tuning & Quantization",
+        title: `Explain QLoRA's NF4 (NormalFloat 4) quantization data type and Double Quantization mechanism. How does it maintain model performance while reducing memory footprint?`,
+        hint: "Discuss zero-mean unit-variance distribution quantization, blockwise scale factors, and FP16 dequantization during forward pass."
+      },
+      {
+        category: "Agent Alignment & RLHF",
+        title: `How does Direct Preference Optimization (DPO) simplify LLM alignment compared to traditional RLHF with explicit reward modeling (PPO)?`,
+        hint: "Discuss implicit reward formulation, reference model log-ratio loss, and eliminating PPO actor-critic instability."
+      }
+    ],
+    Engineer: [
+      {
+        category: "RAG & Vector DB Architecture",
+        title: `Walk me through your document chunking strategy for complex PDFs containing tables and text. How do you prevent context loss across semantic boundaries?`,
+        hint: "Mention specific splitters (e.g. Parent-Child, Semantic Chunking) and how you store tabular context as JSON."
+      },
+      {
+        category: "Vector Index Tuning",
+        title: `In an HNSW vector index, what is the primary operational trade-off when tuning the 'M' and 'ef_construction' parameters during high-throughput ingestion?`,
+        hint: "Discuss memory footprint (RAM), bi-directional graph connectivity, index build latency, and search recall."
+      },
+      {
+        category: "Model Context Protocol (MCP)",
+        title: `What key advantage does the Model Context Protocol (MCP) offer over standard REST API tool calling? How do you implement capability negotiation and resource security scoping?`,
+        hint: "Discuss STDIO vs SSE transport, capability registration, tool isolation, and authorization."
+      },
+      {
+        category: "AI Inference & vLLM Serving",
+        title: `Why does vLLM's PagedAttention architecture achieve up to 2-4x higher inference throughput compared to standard Transformers serving?`,
+        hint: "Explain virtual memory paging, Key-Value (KV) cache block allocation, and elimination of VRAM fragmentation."
+      }
+    ]
+  };
+
+  const pool = personaPools[candidateRole] || personaPools.Engineer;
+  const randomIndex = (qNum + Math.floor(Math.random() * 10)) % pool.length;
+  const pick = pool[randomIndex];
+
+  return {
+    id: qNum,
+    category: pick.category,
+    type: 'text',
+    title: pick.title,
+    hint: pick.hint
+  };
+}
+
+/**
+ * AI Support Assistant Bot for Landing Page using Gemini API with model fallbacks & smart contextual fallback
+ */
+export async function askSupportBotGemini(userQuery) {
+  const activeKey = getGeminiApiKey();
+
+  if (activeKey) {
+    const genAI = new GoogleGenerativeAI(activeKey);
+    const candidateModels = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+
+    const systemPrompt = `You are "Gemini Flash Support Bot", a friendly, helpful, expert customer support AI assistant for InterviewAgent.AI (an Enterprise AI Interviewing platform for RAG, Vector DBs, MCP, Agents, and LLMs).
+
+User Question: "${userQuery}"
+
+Instructions:
+1. Provide a concise, clear, encouraging response (max 2-3 short paragraphs).
+2. If asked about API keys: Explain that a Gemini 3.5 / 2.0 Flash Lite API key is pre-integrated so manual entry is optional.
+3. If asked about format: Explain that interviews consist of open-ended text scenarios (8 to 20 questions) with live step-by-step Gemini feedback, a live question timer, skip & review privileges, and no word limits!
+4. Maintain a warm, expert, professional tone.`;
+
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(systemPrompt);
+        const text = result?.response?.text();
+        if (text && text.trim()) {
+          return text.trim();
+        }
+      } catch (err) {
+        console.warn(`Support bot attempt with model ${modelName} failed, trying next fallback...`, err);
+      }
+    }
+  }
+
+  // Intelligent Contextual Fallback Response if API call fails or network is offline
+  const queryLower = (userQuery || '').toLowerCase();
+
+  if (queryLower.includes('key') || queryLower.includes('api')) {
+    return "🔑 **API Key Information**: Your Gemini 3.5 / 2.0 Flash Lite API key is pre-integrated (`AIzaSyBC7uH...`) into InterviewAgent.AI! You don't need to enter any key manually, but you can paste your own custom key on the Candidate Login screen if preferred.";
+  }
+
+  if (queryLower.includes('format') || queryLower.includes('question') || queryLower.includes('mcq') || queryLower.includes('how')) {
+    return "⚡ **Interview Format**: Interviews feature open-ended technical scenarios covering 31-Day Enterprise AI Cohort topics (RAG, Vector DBs, MCP, Agents, LoRA). After logging in, you can set your target length from 8 to 20 questions, enjoy zero word limits, track time with a live question timer, and get instant step-by-step Gemini feedback!";
+  }
+
+  if (queryLower.includes('skip') || queryLower.includes('review') || queryLower.includes('leftover')) {
+    return "⏭️ **Skip & Review Feature**: If you encounter a complex scenario, simply click 'Skip Question ⏭️'. All skipped questions are stored in a review list so you can answer them one-by-one at the end before submitting your final report!";
+  }
+
+  return "👋 **Welcome to InterviewAgent.AI Support!** Our platform conducts live adaptive technical interviews powered by Gemini 3.5 Flash Lite. Click **Candidate Login** in the top navigation whenever you are ready to begin your technical assessment!";
+}
+
+

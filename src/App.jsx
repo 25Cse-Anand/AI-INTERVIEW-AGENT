@@ -10,7 +10,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [feedbackData, setFeedbackData] = useState(null);
 
-  const handleStartFromLanding = () => {
+  const handleNavToLogin = () => {
     setScreen('login');
   };
 
@@ -33,7 +33,10 @@ export default function App() {
   return (
     <div className="app-root">
       {screen === 'landing' && (
-        <LandingPage onStartInterview={handleStartFromLanding} />
+        <LandingPage
+          onLoginClick={handleNavToLogin}
+          onStartInterview={handleNavToLogin}
+        />
       )}
       {screen === 'login' && (
         <LoginPage onLogin={handleLogin} />

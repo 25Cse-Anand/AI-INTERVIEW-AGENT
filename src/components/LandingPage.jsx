@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Sparkles, ArrowRight, ShieldCheck, Zap, Layers, Brain, CheckCircle2, TrendingUp, Cpu, Award, Play, Star, ChevronRight, ChevronLeft, Lock, HelpCircle, Users, Check, FastForward, SkipForward } from 'lucide-react';
+import { Bot, Sparkles, ArrowRight, ShieldCheck, Zap, Layers, Brain, CheckCircle2, TrendingUp, Cpu, Award, Play, Star, ChevronRight, ChevronLeft, Lock, HelpCircle, Users, Check, FastForward, SkipForward, BarChart2, Eye, MessageSquare, Send, Loader2 } from 'lucide-react';
 import ResultPreviewModal from './ResultPreviewModal';
+import { askSupportBotGemini } from '../services/geminiService';
 
 const HERO_SLIDES = [
   {
@@ -43,7 +44,44 @@ const SHOWCASE_SLIDES = [
   }
 ];
 
-export default function LandingPage({ onStartInterview }) {
+function TypewriterHeadline() {
+  const fullText = "Master Your AI Technical Interview with Real-Time AI Coaching";
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (currentIndex < fullText.length) {
+      const timeout = setTimeout(() => {
+        setDisplayedText((prev) => prev + fullText[currentIndex]);
+        setCurrentIndex((prev) => prev + 1);
+      }, 35);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentIndex, fullText]);
+
+  const highlightStart = fullText.indexOf("Real-Time AI Coaching");
+  
+  if (displayedText.length > highlightStart && highlightStart !== -1) {
+    const mainPart = displayedText.slice(0, highlightStart);
+    const highlightPart = displayedText.slice(highlightStart);
+    return (
+      <h1 className="lp-hero-headline">
+        {mainPart}
+        <span className="text-gradient-cyan">{highlightPart}</span>
+        <span className="typing-cursor font-mono text-cyan">|</span>
+      </h1>
+    );
+  }
+
+  return (
+    <h1 className="lp-hero-headline">
+      {displayedText}
+      <span className="typing-cursor font-mono text-cyan">|</span>
+    </h1>
+  );
+}
+
+export default function LandingPage({ onLoginClick, onStartInterview }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [showcaseIndex, setShowcaseIndex] = useState(0);
@@ -80,6 +118,16 @@ export default function LandingPage({ onStartInterview }) {
     setShowcaseIndex((prev) => (prev + 1) % SHOWCASE_SLIDES.length);
   };
 
+  // AI Support Bot Chat State
+  const [chatMessages, setChatMessages] = useState([
+    {
+      sender: 'bot',
+      text: '👋 Hi there! I am your Gemini Flash AI Support Assistant. Facing any issue with interview setup, API keys, or cohort topics? Ask me anything!'
+    }
+  ]);
+  const [inputQuery, setInputQuery] = useState('');
+  const [isBotThinking, setIsBotThinking] = useState(false);
+
   const handleOpenModal = () => {
     setIsModalOpen(true);
   };
@@ -90,11 +138,42 @@ export default function LandingPage({ onStartInterview }) {
 
   const handleProceedToInterview = () => {
     setIsModalOpen(false);
-    onStartInterview(); // Navigate to Login / Interview portal
+    onStartInterview(); // Navigate to mandatory Login screen
+  };
+
+  const handleSendQuery = async (e) => {
+    e.preventDefault();
+    if (!inputQuery.trim() || isBotThinking) return;
+
+    const userText = inputQuery.trim();
+    setInputQuery('');
+    setChatMessages((prev) => [...prev, { sender: 'user', text: userText }]);
+    setIsBotThinking(true);
+
+    try {
+      const response = await askSupportBotGemini(userText);
+      setChatMessages((prev) => [...prev, { sender: 'bot', text: response }]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: "I'm experiencing a brief connectivity glitch with the Gemini API, but you can proceed to Candidate Login to start your interview right away!"
+        }
+      ]);
+    } finally {
+      setIsBotThinking(false);
+    }
   };
 
   return (
-    <div className="landing-shell">
+    <div className="lp-shell">
+      {/* Result Preview Modal */}
+      <ResultPreviewModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onStartInterview={handleProceedToInterview}
+      />
 
       {/* ── STICKY GLASSMORPHISM NAVBAR ── */}
       <nav className="lp-navbar">
@@ -112,16 +191,16 @@ export default function LandingPage({ onStartInterview }) {
           <div className="lp-nav-links">
             <a href="#features">Features</a>
             <a href="#how-it-works">How It Works</a>
-            <a href="#curriculum">31-Day Cohort</a>
-            <a href="#testimonials">Testimonials</a>
+            <a href="#result-preview">Result Preview</a>
+            <a href="#contact">Contact & AI Support</a>
           </div>
 
-          {/* Action CTAs */}
+          {/* Mandatory Login Action CTAs */}
           <div className="lp-nav-actions">
-            <button className="btn btn-secondary lp-btn-login" onClick={handleOpenModal}>
+            <button className="btn btn-secondary lp-btn-login" onClick={onLoginClick || onStartInterview}>
               Login
             </button>
-            <button className="btn btn-primary lp-btn-nav-start" onClick={handleOpenModal}>
+            <button className="btn btn-primary lp-btn-nav-start" onClick={onStartInterview}>
               <span>Start Interview</span>
               <ArrowRight size={16} />
             </button>
@@ -131,7 +210,6 @@ export default function LandingPage({ onStartInterview }) {
 
       {/* ── HERO SECTION ── */}
       <section className="lp-hero-section">
-        {/* Ambient background glowing orbs */}
         <div className="lp-orb lp-orb-top-left" />
         <div className="lp-orb lp-orb-center-right" />
 
@@ -139,21 +217,20 @@ export default function LandingPage({ onStartInterview }) {
           {/* Hero Content Left */}
           <div className="lp-hero-content animate-fade-in">
             <div className="lp-hero-pill font-mono">
-              <Sparkles size={14} className="text-cyan" />
+              <Sparkles size={14} className="text-cyan pulse-sparkle" />
               <span>POWERED BY GEMINI 3.5 FLASH LITE API</span>
             </div>
 
-            <h1 className="lp-hero-headline">
-              Master Your AI Technical Interview with <span className="text-gradient-cyan">Real-Time AI Coaching</span>
-            </h1>
+            {/* Live Typing Headline */}
+            <TypewriterHeadline />
 
             <p className="lp-hero-subheadline">
-              Enterprise-grade adaptive technical interviews tailored for <strong>RAG, Vector DBs, MCP Protocols, LoRA Fine-Tuning, & Agentic Systems</strong>. Get evaluated step-by-step with instant actionable reports.
+              Enterprise-grade adaptive technical interviews tailored for <strong>RAG, Vector DBs, MCP Protocols, LoRA Fine-Tuning, & Agentic Systems</strong>. Evaluated step-by-step with instant actionable reports.
             </p>
 
-            {/* Dual CTAs */}
+            {/* Mandatory Login CTAs */}
             <div className="lp-hero-actions">
-              <button className="btn btn-primary btn-lg lp-btn-hero-main" onClick={handleOpenModal}>
+              <button className="btn btn-primary btn-lg lp-btn-hero-main" onClick={onStartInterview}>
                 <span>Start Free Assessment</span>
                 <ArrowRight size={20} />
               </button>
@@ -231,8 +308,6 @@ export default function LandingPage({ onStartInterview }) {
                     />
                   ))}
                 </div>
-
-                {/* Overlaid Live Badges */}
                 <div className="visual-float-badge float-top-right font-mono">
                   <Zap size={14} className="text-cyan" />
                   <span>Gemini 3.5 Active (0.4s)</span>
@@ -254,35 +329,32 @@ export default function LandingPage({ onStartInterview }) {
           <div className="lp-section-tag font-mono text-cyan">ENTERPRISE INTERVIEW INTELLIGENCE</div>
           <h2 className="lp-section-title">Built for Serious AI Engineers</h2>
           <p className="lp-section-subtitle">
-            Say goodbye to static quizzes. Experience a multi-turn, realistic interview that adapts to your responses.
+            Say goodbye to static quizzes. Experience pure open-ended text scenarios with live Gemini feedback and zero word limits.
           </p>
         </div>
 
         <div className="lp-features-grid">
 
-          {/* Card 1 */}
           <div className="lp-feature-card">
             <div className="fc-icon-wrap bg-cyan-subtle">
               <Brain size={24} className="text-cyan" />
             </div>
-            <h3>Adaptive AI Questioning</h3>
+            <h3>Customizable Length (8 to 20 Qs)</h3>
             <p>
-              Questions dynamically adjust difficulty based on your answers. Prove your depth across 4 self-assessed levels from Beginner to Expert.
+              Set your target question length from 8 to 20 questions using an interactive slider control after logging in.
             </p>
           </div>
 
-          {/* Card 2 */}
           <div className="fc-card lp-feature-card">
             <div className="fc-icon-wrap bg-emerald-subtle">
               <Zap size={24} className="text-emerald" />
             </div>
-            <h3>Live Gemini 3.5 Step-by-Step Analysis</h3>
+            <h3>Pure Open-Ended Text Scenarios</h3>
             <p>
-              Every text answer is deeply evaluated using Gemini 3.5 Flash Lite API against true AI engineering facts and production mechanisms.
+              No MCQs! Every turn presents realistic open-ended technical scenarios with zero word limits so you can write complete technical details.
             </p>
           </div>
 
-          {/* Card 3 */}
           <div className="fc-card lp-feature-card">
             <div className="fc-icon-wrap bg-violet-subtle">
               <FastForward size={24} className="text-violet" />
@@ -293,7 +365,6 @@ export default function LandingPage({ onStartInterview }) {
             </p>
           </div>
 
-          {/* Card 4 */}
           <div className="fc-card lp-feature-card">
             <div className="fc-icon-wrap bg-rose-subtle">
               <ShieldCheck size={24} className="text-rose" />
@@ -304,7 +375,6 @@ export default function LandingPage({ onStartInterview }) {
             </p>
           </div>
 
-          {/* Card 5 */}
           <div className="fc-card lp-feature-card">
             <div className="fc-icon-wrap bg-amber-subtle">
               <Layers size={24} className="text-amber" />
@@ -315,7 +385,6 @@ export default function LandingPage({ onStartInterview }) {
             </p>
           </div>
 
-          {/* Card 6 */}
           <div className="fc-card lp-feature-card">
             <div className="fc-icon-wrap bg-cyan-subtle">
               <Award size={24} className="text-cyan" />
@@ -341,7 +410,7 @@ export default function LandingPage({ onStartInterview }) {
             <div className="ts-num font-mono">01</div>
             <div className="ts-content">
               <h4>Calibrate Your Baseline</h4>
-              <p>Sign in and choose your self-assessed level (Beginner, Intermediate, Advanced, Expert) and set target question length (10 to 20 Qs).</p>
+              <p>Sign in and choose your self-assessed level (Beginner, Intermediate, Advanced, Expert) and set target question length (8 to 20 Qs).</p>
             </div>
           </div>
 
@@ -349,7 +418,7 @@ export default function LandingPage({ onStartInterview }) {
             <div className="ts-num font-mono">02</div>
             <div className="ts-content">
               <h4>Adaptive Interview & Skip Control</h4>
-              <p>Answer dynamic MCQs and open-ended technical scenarios. Skip questions when unsure and review them leftover at the end.</p>
+              <p>Answer dynamic open-ended technical scenarios with zero word limits. Skip questions when unsure and review them leftover at the end.</p>
             </div>
           </div>
 
@@ -363,23 +432,23 @@ export default function LandingPage({ onStartInterview }) {
         </div>
       </section>
 
-      {/* ── MID-PAGE HERO IMAGE SHOWCASE SECTION (DYNAMIC CAROUSEL) ── */}
-      <section id="curriculum" className="lp-showcase-section">
+      {/* ── RESULT PREVIEW SECTION ── */}
+      <section id="result-preview" className="lp-showcase-section">
         <div className="lp-showcase-container">
           <div className="lp-showcase-text">
-            <span className="lp-section-tag font-mono text-cyan">CURRICULUM DEEP DIVE</span>
-            <h2>Tested on Real Production AI Infrastructure</h2>
+            <span className="lp-section-tag font-mono text-cyan">RESULT PAGE PREVIEW</span>
+            <h2>Get an Enterprise Structured Assessment Report</h2>
             <p>
-              Our questions test actual production decisions: HNSW vector graph memory consumption, bi-encoders vs cross-encoders, ReAct agent loop breakpoints, and prompt injection mitigation.
+              Upon completing your 8–20 open-ended technical scenario session, receive a complete breakdown of your technical match score, competency progress bars, and an actionable growth roadmap.
             </p>
             <ul className="lp-check-list">
-              <li><CheckCircle2 size={16} className="text-cyan" /> RAG Triad Evaluation (Context Relevance, Groundedness, Answer Relevance)</li>
-              <li><CheckCircle2 size={16} className="text-cyan" /> Model Context Protocol (MCP) Capability Negotiation</li>
-              <li><CheckCircle2 size={16} className="text-cyan" /> vLLM PagedAttention Virtual KV Block Memory Management</li>
+              <li><CheckCircle2 size={16} className="text-cyan" /> Overall Candidate Hire Recommendation (Strong Hire, Hire, Lean Hire)</li>
+              <li><CheckCircle2 size={16} className="text-cyan" /> Step-by-Step Gemini Factual Verification & Metric Analysis</li>
+              <li><CheckCircle2 size={16} className="text-cyan" /> Actionable 3-step Senior Career Growth Roadmap</li>
             </ul>
             <button className="btn btn-primary btn-lg mt-3" onClick={handleOpenModal}>
-              <span>Start Assessment Now</span>
-              <ArrowRight size={18} />
+              <span>Preview Sample Result Modal</span>
+              <Eye size={18} />
             </button>
           </div>
 
@@ -428,8 +497,70 @@ export default function LandingPage({ onStartInterview }) {
         </div>
       </section>
 
+      {/* ── AI CUSTOMER SUPPORT / HELP CHATBOT SECTION ── */}
+      <section id="contact" className="lp-support-section">
+        <div className="lp-section-header">
+          <div className="lp-section-tag font-mono text-cyan">24/7 AI AGENT ASSISTANT</div>
+          <h2 className="lp-section-title">Contact Us & Ask Gemini Flash Live</h2>
+          <p className="lp-section-subtitle">
+            Have questions about the interview process, API keys, or cohort topics? Type your problem below to troubleshoot directly with our AI Support Agent.
+          </p>
+        </div>
+
+        <div className="lp-support-chat-container">
+          <div className="support-chat-header">
+            <div className="sch-left">
+              <div className="sch-avatar">
+                <Sparkles size={18} className="text-cyan" />
+              </div>
+              <div>
+                <h4>Gemini Flash AI Support Bot</h4>
+                <p className="text-xs text-emerald">● Online & Ready to Help</p>
+              </div>
+            </div>
+            <button className="btn btn-secondary text-xs" onClick={onLoginClick}>
+              Proceed to Candidate Login →
+            </button>
+          </div>
+
+          <div className="support-chat-body">
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`chat-bubble-wrap ${msg.sender === 'user' ? 'wrap-user' : 'wrap-bot'}`}>
+                <div className={`chat-bubble ${msg.sender === 'user' ? 'bubble-user' : 'bubble-bot'}`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+
+            {isBotThinking && (
+              <div className="chat-bubble-wrap wrap-bot">
+                <div className="chat-bubble bubble-bot thinking-bubble">
+                  <Loader2 size={16} className="animate-spin text-cyan" />
+                  <span>Gemini Flash is analyzing your problem...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <form className="support-chat-input-bar" onSubmit={handleSendQuery}>
+            <input
+              type="text"
+              placeholder="Ask a question or describe an issue (e.g., 'How do API keys work?' or 'What topics are asked?')..."
+              value={inputQuery}
+              onChange={(e) => setInputQuery(e.target.value)}
+              disabled={isBotThinking}
+              className="chat-input-field"
+            />
+            <button type="submit" className="btn btn-primary chat-send-btn" disabled={!inputQuery.trim() || isBotThinking}>
+              <Send size={16} />
+              <span>Ask AI</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
       {/* ── SOCIAL PROOF & TESTIMONIALS ── */}
-      <section id="testimonials" className="lp-testimonials-section">
+      <section className="lp-testimonials-section">
         <div className="lp-section-header">
           <div className="lp-section-tag font-mono text-cyan">CANDIDATE SUCCESS STORIES</div>
           <h2 className="lp-section-title">Engineers Who Aced Their AI Interviews</h2>
@@ -486,30 +617,14 @@ export default function LandingPage({ onStartInterview }) {
         </div>
       </section>
 
-      {/* ── ENTERPRISE SECURITY BANNER ── */}
-      <section className="lp-security-banner">
-        <div className="security-banner-inner">
-          <div className="sb-left">
-            <ShieldCheck size={28} className="text-emerald" />
-            <div>
-              <h4>Enterprise-Grade Security & Privacy</h4>
-              <p>Your interview sessions and API keys are stored locally and encrypted. SOC2 compliant workflow.</p>
-            </div>
-          </div>
-          <button className="btn btn-secondary lp-btn-sec-login" onClick={handleOpenModal}>
-            Login & Begin
-          </button>
-        </div>
-      </section>
-
       {/* ── BOTTOM HIGH-CONVERTING CTA BANNER ── */}
       <section className="lp-bottom-cta">
         <div className="bottom-cta-inner">
           <h2>Ready to Prove Your AI Engineering Skills?</h2>
-          <p>Join over 10,000 engineers who calibrated their expertise and landed senior AI roles.</p>
+          <p>Sign in to calibrate your expertise from 8 to 20 questions and receive live Gemini Flash feedback.</p>
           <div className="bcta-actions">
-            <button className="btn btn-primary btn-lg" onClick={handleOpenModal}>
-              <span>Start My Free Interview</span>
+            <button className="btn btn-primary btn-lg" onClick={onStartInterview}>
+              <span>Candidate Login & Start Assessment</span>
               <ArrowRight size={20} />
             </button>
           </div>
@@ -534,11 +649,12 @@ export default function LandingPage({ onStartInterview }) {
               <h5>Platform</h5>
               <a href="#features">Features</a>
               <a href="#how-it-works">How It Works</a>
-              <a href="#curriculum">Cohort Curriculum</a>
+              <a href="#contact">AI Support Bot</a>
             </div>
             <div className="f-col">
-              <h5>Resources</h5>
-              <button className="f-link-btn" onClick={handleOpenModal}>Sample Report</button>
+              <h5>Actions</h5>
+              <button className="f-link-btn" onClick={onLoginClick}>Candidate Login</button>
+              <button className="f-link-btn" onClick={onStartInterview}>Start Assessment</button>
               <button className="f-link-btn" onClick={handleOpenModal}>Result Preview</button>
             </div>
             <div className="f-col">
