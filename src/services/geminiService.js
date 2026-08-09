@@ -1,31 +1,167 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Pre-integrated Gemini API Key
-const DEFAULT_GEMINI_KEY = "AIzaSyBC7uH-FudjOlrM6xd85kQHsB0LsohXJLY";
 
-let apiKey = typeof window !== 'undefined'
-  ? (localStorage.getItem('gemini_api_key') || import.meta.env?.VITE_GEMINI_API_KEY || DEFAULT_GEMINI_KEY)
+const DEFAULT_GEMINI_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
+const DEFAULT_GROQ_KEY = import.meta.env?.VITE_GROQ_API_KEY || '';
+
+let geminiApiKey = typeof window !== 'undefined'
+  ? (localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_KEY)
   : DEFAULT_GEMINI_KEY;
 
+let aiProvider = typeof window !== 'undefined'
+  ? (localStorage.getItem('ai_provider') || 'groq')
+  : 'groq';
+
+let groqApiKey = typeof window !== 'undefined'
+  ? (localStorage.getItem('groq_api_key') || DEFAULT_GROQ_KEY)
+  : DEFAULT_GROQ_KEY;
+  
 export function setGeminiApiKey(key) {
-  apiKey = key ? key.trim() : DEFAULT_GEMINI_KEY;
-  if (typeof window !== 'undefined' && apiKey) {
-    localStorage.setItem('gemini_api_key', apiKey);
+  geminiApiKey = key ? key.trim() : DEFAULT_GEMINI_KEY;
+  if (typeof window !== 'undefined' && geminiApiKey) {
+    localStorage.setItem('gemini_api_key', geminiApiKey);
   }
 }
 
 export function getGeminiApiKey() {
-  return apiKey || DEFAULT_GEMINI_KEY;
+  return geminiApiKey || DEFAULT_GEMINI_KEY;
+}
+
+export function setAiProvider(provider) {
+  aiProvider = 'groq';
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('ai_provider', 'groq');
+  }
+}
+
+export function getAiProvider() {
+  return 'groq';
+}
+
+export function setGroqApiKey(key) {
+  groqApiKey = key ? key.trim() : DEFAULT_GROQ_KEY;
+  if (typeof window !== 'undefined' && groqApiKey) {
+    localStorage.setItem('groq_api_key', groqApiKey);
+  }
+}
+
+export function getGroqApiKey() {
+  return groqApiKey || DEFAULT_GROQ_KEY;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PER-ANSWER EVALUATOR — Gemini 2.0 Flash + Google Search Grounding
+// ANTI-PLAGIARISM & CHEAT DETECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Evaluates a candidate's answer with Gemini + Google Search factual grounding.
- * Produces a strict, dynamic score (1.0–10.0) reflecting actual answer quality.
- */
+export function checkPlagiarism(answer, questionText, hintText) {
+  const ansText = (answer || '').trim();
+  if (!ansText) return null;
+
+  const cleanAns = ansText.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+  if (cleanAns.length === 0) return null;
+
+  const checkOverlap = (source) => {
+    if (!source) return 0;
+    const srcWords = source.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+    if (srcWords.length === 0) return 0;
+
+    const srcSet = new Set(srcWords);
+    let matched = 0;
+    for (const word of cleanAns) {
+      if (srcSet.has(word)) {
+        matched++;
+      }
+    }
+    return matched / Math.max(cleanAns.length, srcWords.length);
+  };
+
+  const qSim = checkOverlap(questionText);
+  const hSim = checkOverlap(hintText);
+
+  // If candidate answer matches over 60% of question words or 65% of hint words, it is flagged as plagiarism
+  if (qSim > 0.6 || hSim > 0.65) {
+    return {
+      isSenselessOrOffTopic: true,
+      senselessReason: "Plagiarism Alert: Your answer has exceptionally high similarity to the question or hint text.",
+      score: 1.0,
+      isCorrect: false,
+      level: "Beginner",
+      levelEmoji: "📘",
+      levelColor: "#F43F5E",
+      feedback: "Plagiarism detected. You copied or restated the question or hint text directly without providing a genuine technical solution.",
+      factualErrors: ["Copied the question/hint text directly."],
+      strengths: [],
+      gaps: ["Must write an original explanation in your own words."],
+      _generatedBy: 'System'
+    };
+  }
+
+  // Exact long-phrase match
+  if (questionText && questionText.length > 25) {
+    const qWords = questionText.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+    for (let i = 0; i <= qWords.length - 6; i++) {
+      const phrase = qWords.slice(i, i + 6).join(' ');
+      if (ansText.toLowerCase().includes(phrase) && cleanAns.length < qWords.length * 0.9) {
+        return {
+          isSenselessOrOffTopic: true,
+          senselessReason: "Plagiarism Alert: Exact phrases from the question were found in your response.",
+          score: 1.0,
+          isCorrect: false,
+          level: "Beginner",
+          levelEmoji: "📘",
+          levelColor: "#F43F5E",
+          feedback: "Plagiarism detected. Answer contains copied exact phrases from the question prompt.",
+          factualErrors: ["Copied exact phrases from the question prompt."],
+          strengths: [],
+          gaps: ["Write an original response without copying the prompt text."],
+          _generatedBy: 'System'
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROQ CLIENT INTEGRATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function callGroqCompletions(prompt, isJson = true) {
+  const key = getGroqApiKey();
+  if (!key) {
+    throw new Error("Groq API key not set.");
+  }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+      response_format: isJson ? { type: 'json_object' } : undefined
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq API Error (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PER-ANSWER EVALUATOR
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, arg5) {
   let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions;
 
@@ -39,40 +175,16 @@ export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, a
     totalTargetQuestions = arg5 || 8;
   }
 
-  const activeKey = getGeminiApiKey();
+  // 1. Run plagiarism detection first
+  const plagResult = checkPlagiarism(userAnswer, currentQuestion?.title, currentQuestion?.hint);
+  if (plagResult) {
+    return { evaluation: plagResult };
+  }
 
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-
-      // Try Gemini 2.0 Flash with Google Search grounding first (best factual accuracy)
-      const modelOptions = [
-        {
-          model: 'gemini-2.0-flash',
-          tools: [{ googleSearch: {} }]
-        },
-        {
-          model: 'gemini-2.0-flash-lite',
-          tools: []
-        },
-        {
-          model: 'gemini-1.5-flash',
-          tools: []
-        }
-      ];
-
-      for (const opts of modelOptions) {
-        try {
-          const modelConfig = { model: opts.model };
-          if (opts.tools && opts.tools.length > 0) {
-            modelConfig.tools = opts.tools;
-          }
-          const model = genAI.getGenerativeModel(modelConfig);
-
-          const prompt = `
+  const prompt = `
 <evaluation_task>
 You are a STRICT Senior AI Engineering Technical Interviewer performing a rigorous factual evaluation.
-${opts.tools?.length > 0 ? 'Use your Google Search grounding to verify technical facts in the candidate answer.' : ''}
+Evaluate the candidate's answer STRICTLY and HONESTLY based on its actual technical content.
 
 INTERVIEW CONTEXT:
 - Question #${questionNumber} of ${totalTargetQuestions}
@@ -84,7 +196,7 @@ CANDIDATE ANSWER:
 "${userAnswer}"
 
 STRICT SCORING RUBRIC — apply honestly, do NOT be lenient:
-• 1.0–2.0  → Completely wrong, empty, or incoherent. No technical content.
+• 1.0–2.0  → Completely wrong, empty, plagiarized, or copied prompt text. No technical content.
 • 2.5–3.5  → Vague or severely incomplete. Shows surface-level awareness only.
 • 4.0–5.0  → Partially correct. Missing critical mechanisms, parameters, or trade-offs.
 • 5.5–6.5  → Decent. Core concept addressed but lacks depth or specifics.
@@ -92,11 +204,11 @@ STRICT SCORING RUBRIC — apply honestly, do NOT be lenient:
 • 8.5–9.0  → Very strong. Production-grade depth with specific metrics/configs.
 • 9.5–10.0 → Exceptional. Expert-level with edge cases, benchmarks, and system design.
 
-EVALUATION RULES (MANDATORY):
+IMPORTANT RULES:
 1. Score MUST reflect the ACTUAL quality of this specific answer.
 2. A one-sentence vague response scores ≤ 4.0, NOT 7.0+.
 3. Only answers with correct terminology, specific parameters, and trade-off reasoning score ≥ 7.0.
-4. Identify specific factual errors in the answer and correct them.
+4. Detect if candidate is trying to trick the rating by copying/pasting the prompt or repeating nonsense phrases.
 5. "isSenselessOrOffTopic": true ONLY for complete gibberish or total off-topic responses.
 
 Return ONLY this JSON (no markdown, no code fences):
@@ -117,6 +229,42 @@ Return ONLY this JSON (no markdown, no code fences):
 }
 </evaluation_task>`;
 
+  // 2. Query selected provider (Groq or Gemini)
+  if (getAiProvider() === 'groq' && getGroqApiKey()) {
+    try {
+      const response = await callGroqCompletions(prompt, true);
+      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.evaluation && typeof parsed.evaluation.score === 'number') {
+          parsed.evaluation.score = Math.min(10.0, Math.max(1.0, parsed.evaluation.score));
+          return {
+            ...parsed,
+            _generatedBy: 'Groq'
+          };
+        }
+      }
+    } catch (groqErr) {
+      console.warn("Groq evaluation failed, falling back to Gemini:", groqErr?.message);
+    }
+  }
+
+  // Gemini evaluation logic
+  const activeKey = getGeminiApiKey();
+  if (activeKey && activeKey.trim().length > 10) {
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey.trim());
+      const modelOptions = [
+        { model: 'gemini-2.5-flash', tools: [{ googleSearch: {} }] },
+        { model: 'gemini-2.5-flash-lite', tools: [] }
+      ];
+
+      for (const opts of modelOptions) {
+        try {
+          const modelConfig = { model: opts.model };
+          if (opts.tools && opts.tools.length > 0) modelConfig.tools = opts.tools;
+          const model = genAI.getGenerativeModel(modelConfig);
           const result = await model.generateContent(prompt);
           const text = result.response.text();
           const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -125,9 +273,11 @@ Return ONLY this JSON (no markdown, no code fences):
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
             if (parsed?.evaluation && typeof parsed.evaluation.score === 'number') {
-              // Validate score is in range
               parsed.evaluation.score = Math.min(10.0, Math.max(1.0, parsed.evaluation.score));
-              return parsed;
+              return {
+                ...parsed,
+                _generatedBy: 'Gemini'
+              };
             }
           }
         } catch (modelErr) {
@@ -151,21 +301,6 @@ function localFallbackEvaluation({ userLevel, currentQuestion, userAnswer, quest
   const lower = text.toLowerCase();
   const words = lower.split(/\s+/).filter(Boolean).length;
 
-  // Gibberish detection
-  const gibberishRegex = /^(asdf|qwerty|zxcv|12345|aaaa+|blabla|lol|haha|idk|dunno|pizza|cats|dogs|hello|hi|yes|no|ok|okay)$/i;
-  if (gibberishRegex.test(lower) || (words < 3 && !/rag|llm|mcp|vector|gpu|model|api|data|code|train/i.test(lower))) {
-    return {
-      evaluation: {
-        isSenselessOrOffTopic: true,
-        senselessReason: 'Answer is off-topic or gibberish.',
-        score: 1.0, level: 'Beginner', levelEmoji: '📘', levelColor: '#F43F5E', isCorrect: false,
-        feedback: 'Please provide a genuine technical answer for this scenario.',
-        factualErrors: [], strengths: [], gaps: ['Provide a meaningful technical explanation']
-      }
-    };
-  }
-
-  // Weighted tiered term scoring
   const t3 = ['hnsw','pagedattention','rrf','qlora','nf4','infonce','dpo','rlhf','flashattention','sram','opentelemetry','hitl','langgraph'];
   const t2 = ['vllm','mcp','lora','rerank','bm25','pydantic','qdrant','pinecone','ragas','guardrail','transformer','embedding','chunking'];
   const t1 = ['vector','rag','agent','attention','cache','semantic','schema','latency','memory','pipeline','token','throughput','index','model','prompt','gpu','kv'];
@@ -207,28 +342,17 @@ function localFallbackEvaluation({ userLevel, currentQuestion, userAnswer, quest
         : `Score ${score}/10 — Response lacks sufficient technical depth for ${currentQuestion?.category || 'this topic'}. Include specific mechanisms, parameters, and architectural reasoning.`,
       factualErrors: [],
       strengths: allMatched.length ? [`Referenced: ${allMatched.slice(0,3).join(', ')}`] : ['Attempted the question'],
-      gaps: score < 7.0 ? ['Add specific production parameters', 'Discuss architectural trade-offs and failure modes'] : ['Expand on edge cases and real-world benchmarks']
+      gaps: score < 7.0 ? ['Add specific production parameters', 'Discuss architectural trade-offs and failure modes'] : ['Expand on edge cases and real-world benchmarks'],
+      _generatedBy: 'Fallback'
     }
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FINAL REPORT GENERATOR — Gemini AI Comprehensive Analysis
+// FINAL REPORT GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Generates a comprehensive AI-analyzed final report using Gemini.
- * Uses all Q&A pairs and their per-question evaluations to produce:
- * - Accurate overall score (weighted average)
- * - Hire recommendation
- * - Detailed strengths & gaps
- * - Personalized actionable growth roadmap
- * - Narrative summary
- */
 export async function generateFinalReport({ candidateName, userLevel, candidateRole, evaluationsHistory, coveredCategories, skippedQuestions }) {
-  const activeKey = getGeminiApiKey();
-
-  // Build transcript for Gemini
   const transcript = evaluationsHistory.map((e, i) => `
 Q${i + 1} [${e.question?.category || 'General'}]: ${e.question?.title || 'Question'}
 Answer: "${e.answer?.substring(0, 400)}${e.answer?.length > 400 ? '...' : ''}"
@@ -244,18 +368,7 @@ Feedback: ${e.evaluation?.feedback || e.feedback || 'N/A'}
     ? evaluationsHistory.reduce((sum, e) => sum + (e.score || 0), 0) / evaluationsHistory.length
     : 5.0;
 
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-
-      // Try models in order of capability
-      const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
-
-      for (const modelName of models) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-
-          const prompt = `
+  const prompt = `
 <final_report_task>
 You are a Senior AI Technical Interview Panel synthesizing a comprehensive structured evaluation report.
 
@@ -298,10 +411,10 @@ YOUR TASK — Analyze the full transcript carefully and generate a fair, accurat
 8. ACTIONABLE STEPS: 3 concrete, personalized learning recommendations based on the weakest topic areas observed.
 
 9. COMPETENCY SCORES (each as percentage 0–100, derived from the transcript):
-   - conceptualDepth: How well candidate explains underlying theory and concepts
-   - tradeoffAwareness: How well candidate discusses pros/cons, latency, memory trade-offs
-   - engineeringClarity: How clearly and precisely candidate articulates technical ideas
-   - productionRealism: How realistic and production-applicable are the candidate's answers
+   - confidence: How confidently and decisively candidate answers the questions
+   - technicalDepth: How well candidate explains technical details, parameters, and code logic
+   - reasoning: How well candidate explains architectural design trade-offs and latency metrics
+   - communication: How clearly and concisely candidate articulates their technical thoughts
 
 Return ONLY this JSON (no markdown, no code fences):
 {
@@ -315,24 +428,46 @@ Return ONLY this JSON (no markdown, no code fences):
   "areasForImprovement": ["<specific gap 1>", "<specific gap 2>", "<specific gap 3>"],
   "actionableSteps": ["<concrete step 1>", "<concrete step 2>", "<concrete step 3>"],
   "competencyScores": {
-    "conceptualDepth": <0-100>,
-    "tradeoffAwareness": <0-100>,
-    "engineeringClarity": <0-100>,
-    "productionRealism": <0-100>
+    "confidence": <0-100>,
+    "technicalDepth": <0-100>,
+    "reasoning": <0-100>,
+    "communication": <0-100>
   }
 }
 </final_report_task>`;
 
+  // 1. Query selected provider (Groq or Gemini)
+  if (getAiProvider() === 'groq' && getGroqApiKey()) {
+    try {
+      const response = await callGroqCompletions(prompt, true);
+      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.overallScore !== undefined) return parsed;
+      }
+    } catch (groqErr) {
+      console.warn("Groq report generation failed, falling back to Gemini:", groqErr?.message);
+    }
+  }
+
+  // Gemini report generation
+  const activeKey = getGeminiApiKey();
+  if (activeKey && activeKey.trim().length > 10) {
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey.trim());
+      const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+
+      for (const modelName of models) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent(prompt);
           const text = result.response.text();
           const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
           const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed?.overallScore !== undefined) {
-              return parsed;
-            }
+            if (parsed?.overallScore !== undefined) return parsed;
           }
         } catch (e) {
           console.warn(`Report generation with ${modelName} failed, trying next...`, e?.message);
@@ -343,7 +478,6 @@ Return ONLY this JSON (no markdown, no code fences):
     }
   }
 
-  // Local fallback report — computed from actual scores
   return buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions, coveredCategories });
 }
 
@@ -392,10 +526,10 @@ function buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions
       'Profile vLLM PagedAttention KV-cache blocks with OpenTelemetry spans for end-to-end latency visibility.'
     ],
     competencyScores: {
-      conceptualDepth: Math.min(98, Math.max(30, overallScore + Math.round(Math.random() * 6 - 3))),
-      tradeoffAwareness: Math.min(98, Math.max(30, overallScore - 3 + Math.round(Math.random() * 6 - 3))),
-      engineeringClarity: Math.min(98, Math.max(30, overallScore + 2 + Math.round(Math.random() * 6 - 3))),
-      productionRealism: Math.min(98, Math.max(30, overallScore - 1 + Math.round(Math.random() * 6 - 3)))
+      confidence: Math.min(98, Math.max(30, overallScore + Math.round(Math.random() * 6 - 3))),
+      technicalDepth: Math.min(98, Math.max(30, overallScore - 3 + Math.round(Math.random() * 6 - 3))),
+      reasoning: Math.min(98, Math.max(30, overallScore + 2 + Math.round(Math.random() * 6 - 3))),
+      communication: Math.min(98, Math.max(30, overallScore - 1 + Math.round(Math.random() * 6 - 3)))
     }
   };
 }
@@ -404,27 +538,33 @@ function buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions
 // ADAPTIVE QUESTION GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate', previousQuestion = null, previousAnswer = null, previousEvaluation = null, candidateRole = 'Engineer') {
+export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate', previousQuestion = null, previousAnswer = null, previousEvaluation = null, candidateRole = 'Engineer', askedQuestionTitles = []) {
   const activeKey = getGeminiApiKey();
 
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-      const candidateModels = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+  const prevScore = previousEvaluation?.score || 7.0;
+  const isHighPerformer = prevScore >= 7.5;
+  const isLowPerformer = prevScore <= 4.0;
 
-      const prevScore = previousEvaluation?.score || 7.0;
-      const isHighPerformer = prevScore >= 7.5;
-      const isLowPerformer = prevScore <= 4.0;
+  const personaGuidance = {
+    Student: "Focus on foundational AI/ML algorithms, theoretical mechanics, memory trade-offs, vector math, and learning concepts suitable for an CS student.",
+    Researcher: "Focus on state-of-the-art paper innovations, loss functions, embedding space geometry, attention variants, and breakthroughs.",
+    Engineer: "Focus on production AI systems, distributed vLLM serving, HNSW vector database indexing, MCP protocol integration, OpenTelemetry tracing, and VRAM optimization."
+  };
+  const roleContext = personaGuidance[candidateRole] || personaGuidance.Engineer;
 
-      const personaGuidance = {
-        Student: "Focus on foundational AI/ML algorithms, theoretical mechanics, memory trade-offs, vector math, and learning concepts suitable for an ambitious computer science student or bootcamp candidate.",
-        Researcher: "Focus on state-of-the-art paper innovations, loss functions, embedding space geometry, attention variants, benchmark methodologies, and theoretical breakthroughs suitable for an AI Researcher / PhD candidate.",
-        Engineer: "Focus on production AI systems, distributed vLLM serving, HNSW vector database indexing, MCP protocol integration, OpenTelemetry tracing, and GPU VRAM optimization suitable for a Senior AI Software Engineer."
-      };
+  const askedList = askedQuestionTitles.length > 0
+    ? askedQuestionTitles.map((t, idx) => `- Q${idx+1}: "${t}"`).join('\n')
+    : 'No questions asked yet.';
 
-      const roleContext = personaGuidance[candidateRole] || personaGuidance.Engineer;
+  const focusKeywords = {
+    Student: ['BM25 vs dense vectors', 'Reciprocal Rank Fusion (RRF)', 'zero-shot vs few-shot', 'ReAct agent loops', 'instruction fine-tuning', 'vector space cosine distance'],
+    Researcher: ['InfoNCE contrastive loss', 'FlashAttention Online Softmax', 'QLoRA double quantization', 'Direct Preference Optimization (DPO)', 'representation collapse bounds', 'gradient check-pointing trade-offs'],
+    Engineer: ['vLLM KV-cache virtual memory paging', 'HNSW index ef_construction tuning', 'Model Context Protocol capability negotiation', 'semantic text chunking strategy', 'OpenTelemetry latency profiling', 'Ray distributed inference scheduling']
+  };
+  const list = focusKeywords[candidateRole] || focusKeywords.Engineer;
+  const selectedFocus = list[Math.floor(Math.random() * list.length)];
 
-      const prompt = `
+  const prompt = `
 <question_generator>
 You are an Expert AI Technical Interviewer creating Question #${qNum}.
 
@@ -432,15 +572,22 @@ CANDIDATE PROFILE:
 - Level: ${userLevel}
 - Role: ${candidateRole} — ${roleContext}
 
+PREVIOUSLY COVERED QUESTIONS (CRITICAL: DO NOT REPEAT OR GENERATE QUESTIONS ON THESE TOPICS):
+${askedList}
+
 ${previousQuestion && previousAnswer ? `
 PREVIOUS TURN:
 - Q: "${previousQuestion.title || previousQuestion}"
 - Answer: "${previousAnswer?.substring(0, 300)}"
 - Score: ${prevScore}/10
-- Next action: ${isHighPerformer ? 'Probe deeper into advanced edge-cases or related system bottlenecks.' : isLowPerformer ? 'Ask a foundational clarifying question on the same topic area.' : 'Progress to the next logical module.'}
+- Next action: ${isHighPerformer ? 'Probe deeper into advanced edge-cases.' : isLowPerformer ? 'Ask a foundational clarifying question on the same topic area.' : 'Progress to the next logical module.'}
 ` : `This is Question #1 — create an engaging high-impact opening scenario for a ${candidateRole} at ${userLevel} level.`}
 
-Generate ONE novel, scenario-driven open-ended technical question. Make it specific and non-generic.
+TASK:
+Generate ONE novel, scenario-driven open-ended technical question.
+- Frame the scenario or concepts around this key focus topic: "${selectedFocus}" (ensure variety across runs)
+- Make it highly specific and non-generic.
+- The question must NOT repeat or overlap with any previously covered questions.
 
 Return ONLY this JSON:
 {
@@ -451,6 +598,29 @@ Return ONLY this JSON:
   "hint": "One-sentence technical pro-tip"
 }
 </question_generator>`;
+
+  // 1. Query selected provider (Groq or Gemini)
+  if (getAiProvider() === 'groq' && getGroqApiKey()) {
+    try {
+      const response = await callGroqCompletions(prompt, true);
+      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.title) {
+          return { id: qNum, category: parsed.category || 'AI Systems Architecture', type: 'text', title: parsed.title, hint: parsed.hint || 'Consider production trade-offs and latency metrics.' };
+        }
+      }
+    } catch (groqErr) {
+      console.warn("Groq question generation failed, falling back to Gemini:", groqErr?.message);
+    }
+  }
+
+  // Gemini question generation
+  if (activeKey && activeKey.trim().length > 10) {
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey.trim());
+      const candidateModels = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
 
       for (const modelName of candidateModels) {
         try {
@@ -476,7 +646,7 @@ Return ONLY this JSON:
     }
   }
 
-  // Persona-based local fallback pool
+  // Local fallback pools
   const personaPools = {
     Student: [
       { category: "RAG & Vector Fundamentals", title: "As a computer science student building your first RAG application, how do dense vector embeddings differ from sparse BM25 keyword matching? When would you combine both using Reciprocal Rank Fusion (RRF)?", hint: "Discuss semantic similarity vs exact token matching and how RRF merges rank lists." },
@@ -499,8 +669,11 @@ Return ONLY this JSON:
   };
 
   const pool = personaPools[candidateRole] || personaPools.Engineer;
-  const idx = (qNum + Math.floor(Math.random() * 10)) % pool.length;
-  const pick = pool[idx];
+  const unasked = pool.filter(p => !askedQuestionTitles.includes(p.title));
+  const finalPool = unasked.length > 0 ? unasked : pool;
+
+  const idx = Math.floor(Math.random() * finalPool.length);
+  const pick = finalPool[idx];
   return { id: qNum, category: pick.category, type: 'text', title: pick.title, hint: pick.hint };
 }
 
@@ -511,18 +684,29 @@ Return ONLY this JSON:
 export async function askSupportBotGemini(userQuery) {
   const activeKey = getGeminiApiKey();
 
-  if (activeKey) {
-    const genAI = new GoogleGenerativeAI(activeKey);
-    const models = ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.0-flash'];
-    const systemPrompt = `You are "Gemini Flash Support Bot", a friendly expert support AI for InterviewAgent.AI — an Enterprise AI Interviewing platform for RAG, Vector DBs, MCP, Agents, and LLMs.
+  const systemPrompt = `You are "Gemini Flash Support Bot", a friendly expert support AI for InterviewAgent.AI.
 
 User Question: "${userQuery}"
 
 Instructions:
-1. Provide a concise, clear, encouraging response (max 2-3 short paragraphs).
-2. If asked about API keys: A Gemini 2.0 Flash API key is pre-integrated so manual entry is optional.
-3. If asked about format: Interviews feature open-ended technical scenarios (8–20 questions) with live Gemini feedback, a question timer, skip & review privileges, and no word limits.
-4. Maintain a warm, expert, professional tone.`;
+1. Provide a concise response (max 2 short paragraphs).
+2. If asked about provider / keys: Gemini 2.5 is pre-integrated. Groq can be selected on the login page by inputting a Groq API key.
+3. Interviews are open-ended scenarios (8–20 questions) with live feedback and timer.`;
+
+  // 1. Query selected provider (Groq or Gemini)
+  if (getAiProvider() === 'groq' && getGroqApiKey()) {
+    try {
+      const response = await callGroqCompletions(systemPrompt, false);
+      if (response?.trim()) return response.trim();
+    } catch (e) {
+      console.warn("Groq support bot failed, falling back to Gemini:", e?.message);
+    }
+  }
+
+  // Gemini support bot
+  if (activeKey) {
+    const genAI = new GoogleGenerativeAI(activeKey);
+    const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
     for (const modelName of models) {
       try {
@@ -537,8 +721,7 @@ Instructions:
   }
 
   const q = (userQuery || '').toLowerCase();
-  if (q.includes('key') || q.includes('api')) return "🔑 **API Key**: A Gemini 2.0 Flash API key is pre-integrated. You can also paste your own on the Candidate Login screen.";
-  if (q.includes('format') || q.includes('question') || q.includes('how')) return "⚡ **Interview Format**: Open-ended technical scenarios covering RAG, Vector DBs, MCP, Agents, LoRA. 8–20 questions, live Gemini feedback, timer, skip & review!";
-  if (q.includes('skip') || q.includes('review')) return "⏭️ **Skip & Review**: Click 'Skip Question' for complex scenarios — they're stored for review before your final report!";
-  return "👋 **Welcome to InterviewAgent.AI!** Powered by Gemini 2.0 Flash. Click **Candidate Login** to begin your technical assessment!";
+  if (q.includes('key') || q.includes('api')) return "🔑 **API Configurations**: Gemini 2.5 is pre-integrated. You can also select the Groq AI engine on the Candidate Login screen by providing a custom Groq API key.";
+  if (q.includes('format') || q.includes('question')) return "⚡ **Interview Format**: Adaptive scenarios covering RAG, Vector DBs, MCP, Agents, LoRA. 8–20 questions, live feedback, question timer, skip & review!";
+  return "👋 **Welcome to InterviewAgent.AI!** Powered by Llama 3.3 and Gemini 2.5. Click **Candidate Login** to begin your technical assessment!";
 }

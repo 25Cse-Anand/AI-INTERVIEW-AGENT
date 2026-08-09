@@ -1,7 +1,12 @@
 import React from 'react';
-import { Bot, Sparkles, Terminal, Code2, RotateCcw, UserCheck, ShieldCheck } from 'lucide-react';
+import { Bot, Code2, RotateCcw, UserCheck, ShieldCheck } from 'lucide-react';
+import { getAiProvider } from '../services/geminiService';
 
 export default function Navbar({ activeCandidate, onOpenCandidateModal, onOpenApiModal, onResetSession, currentPhase, isComplete }) {
+  const activeEngine = getAiProvider() === 'groq' ? '⚡ Groq Llama 3' : '♊ Gemini 2.5';
+  const engineColor = getAiProvider() === 'groq' ? '#FBBF24' : '#22D3EE';
+  const dotColor = getAiProvider() === 'groq' ? '#EAB308' : '#06B6D4';
+
   return (
     <header className="navbar">
       <div className="nav-container">
@@ -25,8 +30,8 @@ export default function Navbar({ activeCandidate, onOpenCandidateModal, onOpenAp
           </div>
 
           <div className="status-pill phase-pill">
-            <span className="live-dot"></span>
-            <span>Phase: <strong className="text-amber">{currentPhase}</strong></span>
+            <span className="live-dot" style={{ backgroundColor: dotColor }}></span>
+            <span>Engine: <strong style={{ color: engineColor }}>{activeEngine}</strong></span>
           </div>
 
           {isComplete && (

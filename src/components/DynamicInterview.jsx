@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, User, Sparkles, CheckCircle2, ArrowRight, Brain, Target, Shield, HelpCircle, Layers, AlertCircle, RefreshCw, Award, Check, X, ChevronRight, Zap, AlertTriangle, RotateCcw, XCircle, SkipForward, FileQuestion, FastForward } from 'lucide-react';
-import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport } from '../services/geminiService';
+import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport, getAiProvider } from '../services/geminiService';
 
 const LEVELS = [
   {
@@ -92,7 +92,7 @@ export default function DynamicInterview({ user, onComplete }) {
     setUserLevel(levelKey);
     setIsEvaluating(true);
     try {
-      const initialQ = await generateAdaptiveQuestion(1, levelKey, null, null, null, candidateRole);
+      const initialQ = await generateAdaptiveQuestion(1, levelKey, null, null, null, candidateRole, []);
       setCurrentQuestion(initialQ);
       setCoveredCategories(new Set([initialQ.category]));
     } catch (e) {
@@ -132,7 +132,8 @@ export default function DynamicInterview({ user, onComplete }) {
       const nextQNum = currentQuestionNumber + 1;
       setIsEvaluating(true);
       try {
-        const nextQ = await generateAdaptiveQuestion(nextQNum, userLevel, currentQuestion, null, null, candidateRole);
+        const asked = [...evaluationsHistory.map(e => e.question?.title), ...skippedQuestions.map(s => s.question?.title), currentQuestion?.title].filter(Boolean);
+        const nextQ = await generateAdaptiveQuestion(nextQNum, userLevel, currentQuestion, null, null, candidateRole, asked);
         setCurrentQuestion(nextQ);
         setCurrentQuestionNumber(nextQNum);
         if (nextQ?.category) {
@@ -260,13 +261,15 @@ export default function DynamicInterview({ user, onComplete }) {
     const nextQNum = currentQuestionNumber + 1;
     setIsEvaluating(true);
     try {
+      const asked = [...evaluationsHistory.map(e => e.question?.title), ...skippedQuestions.map(s => s.question?.title), currentQuestion?.title].filter(Boolean);
       const nextQ = await generateAdaptiveQuestion(
         nextQNum,
         userLevel,
         currentQuestion?.title || currentQuestion,
         lastAnswerText,
         lastEvaluation,
-        candidateRole
+        candidateRole,
+        asked
       );
       setCurrentQuestion(nextQ);
       setCurrentQuestionNumber(nextQNum);
@@ -331,25 +334,40 @@ export default function DynamicInterview({ user, onComplete }) {
         ? validEvals.reduce((sum, e) => sum + (e.score || 0), 0) / validEvals.length
         : 0;
 
+      const sumOfScores = allReportEvaluations.reduce((sum, e) => sum + (e.score || 0), 0);
+      const mathematicalOverallScore = allReportEvaluations.length > 0 ? Math.round((sumOfScores / allReportEvaluations.length) * 10) : 0;
+
+      let recommendation = aiReport.recommendation;
+      if (mathematicalOverallScore >= 85) recommendation = 'Strong Hire';
+      else if (mathematicalOverallScore >= 70) recommendation = 'Hire';
+      else if (mathematicalOverallScore >= 55) recommendation = 'Lean Hire';
+      else recommendation = 'Needs Development';
+
+      let dominantLevel = aiReport.dominantLevel;
+      if (mathematicalOverallScore >= 85) dominantLevel = 'EXPERT';
+      else if (mathematicalOverallScore >= 70) dominantLevel = 'ADVANCED';
+      else if (mathematicalOverallScore >= 55) dominantLevel = 'INTERMEDIATE';
+      else dominantLevel = 'BEGINNER';
+
       const feedbackReport = {
         candidateName: user.name,
         totalQuestions: validEvals.length,
         totalSkipped: unattemptedSkippedEvals.length,
         coveredDays: Array.from(coveredCategories).length ? Array.from(coveredCategories) : ['RAG Architecture', 'Vector DBs', 'Agentic AI'],
-        overallScore: aiReport.overallScore,
+        overallScore: mathematicalOverallScore,
         avgAnswerScore: avgAnswerRaw.toFixed(1),
-        recommendation: aiReport.recommendation,
-        dominantLevel: aiReport.dominantLevel,
+        recommendation,
+        dominantLevel,
         narrative: aiReport.narrative,
         trendEmoji: aiReport.trendEmoji || '📊',
         performanceTrend: aiReport.performanceTrend || 'consistent',
         levelDistribution: levelDist,
         levelHistory,
         scores: aiReport.competencyScores || {
-          conceptualDepth: aiReport.overallScore,
-          tradeoffAwareness: aiReport.overallScore,
-          engineeringClarity: aiReport.overallScore,
-          productionRealism: aiReport.overallScore
+          confidence: mathematicalOverallScore,
+          technicalDepth: Math.max(10, mathematicalOverallScore - 5),
+          reasoning: Math.max(10, mathematicalOverallScore - 3),
+          communication: Math.min(98, mathematicalOverallScore + 5)
         },
         topicEvaluations: allReportEvaluations,
         keyStrengths: aiReport.keyStrengths || [],
@@ -376,7 +394,7 @@ export default function DynamicInterview({ user, onComplete }) {
         trendEmoji: '📊', performanceTrend: 'consistent',
         levelDistribution: { EXPERT: 0, ADVANCED: 0, INTERMEDIATE: 0, BEGINNER: 0 },
         levelHistory: [],
-        scores: { conceptualDepth: avgScore, tradeoffAwareness: avgScore, engineeringClarity: avgScore, productionRealism: avgScore },
+        scores: { confidence: avgScore, technicalDepth: avgScore, reasoning: avgScore, communication: avgScore },
         topicEvaluations: allReportEvaluations,
         keyStrengths: ['Interview completed'],
         areasForImprovement: ['Review all topic areas'],
@@ -399,7 +417,13 @@ export default function DynamicInterview({ user, onComplete }) {
           <div className="di-brand">
             <Bot size={20} className="text-cyan" />
             <span className="font-bold">InterviewAgent.AI</span>
-            <span className="di-badge-live">● GEMINI 3.5 FLASH LITE ACTIVE</span>
+            <span className="di-badge-live" style={{
+              backgroundColor: getAiProvider() === 'groq' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(0, 242, 254, 0.15)',
+              color: getAiProvider() === 'groq' ? '#FBBF24' : '#00F2FE',
+              borderColor: getAiProvider() === 'groq' ? 'rgba(234, 179, 8, 0.3)' : 'rgba(0, 242, 254, 0.3)'
+            }}>
+              ● {getAiProvider() === 'groq' ? 'GROQ LLAMA 3 ACTIVE' : 'GEMINI 2.5 ACTIVE'}
+            </span>
           </div>
 
           {stage !== 'greeting' && stage !== 'level_select' && stage !== 'review_skipped_prompt' && stage !== 'generating_report' && (

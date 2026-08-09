@@ -71,10 +71,10 @@ export default function StructuredFeedback({ feedback, onRestart }) {
         {/* ── Stats Row ── */}
         <div className="sf-stats-row">
           {[
-            { icon: <Award size={20} className="text-cyan" />, val: safeFeedback.totalQuestions || 8, label: 'Questions Asked' },
-            { icon: <Layers size={20} className="text-violet" />, val: (safeFeedback.coveredDays || []).length || 3, label: 'Curriculum Days' },
-            { icon: <BarChart2 size={20} className="text-amber" />, val: `${safeFeedback.avgAnswerScore || '7.5'}/10`, label: 'Avg Answer Score' },
-            { icon: <TrendingUp size={20} className="text-emerald" />, val: `${safeFeedback.overallScore || 75}%`, label: 'Overall Score' },
+            { icon: <Award size={20} className="text-cyan" />, val: safeFeedback.totalQuestions ?? 0, label: 'Questions Answered' },
+            { icon: <Layers size={20} className="text-violet" />, val: (safeFeedback.coveredDays ?? []).length, label: 'Topics Covered' },
+            { icon: <BarChart2 size={20} className="text-amber" />, val: `${safeFeedback.avgAnswerScore ?? '0.0'}/10`, label: 'Avg Answer Score' },
+            { icon: <TrendingUp size={20} className="text-emerald" />, val: `${safeFeedback.overallScore ?? 0}%`, label: 'Overall Score' },
           ].map((s, i) => (
             <div key={i} className="sf-stat-card">
               {s.icon}
@@ -122,10 +122,10 @@ export default function StructuredFeedback({ feedback, onRestart }) {
           <h3 className="sf-section-title"><Target size={17} className="text-amber" /><span>AI Interview Analysis Metrics</span></h3>
           <div className="sf-metrics-grid">
             {[
-              { label: 'Confidence', val: (safeFeedback.scores && safeFeedback.scores.confidence) || 72, color: '#00F2FE', cls: 'fill-cyan' },
-              { label: 'Technical Depth', val: (safeFeedback.scores && safeFeedback.scores.technicalDepth) || 55, color: '#10B981', cls: 'fill-emerald' },
-              { label: 'Reasoning', val: (safeFeedback.scores && safeFeedback.scores.reasoning) || 68, color: '#F59E0B', cls: 'fill-amber' },
-              { label: 'Communication', val: (safeFeedback.scores && safeFeedback.scores.communication) || 81, color: '#8B5CF6', cls: 'fill-violet' },
+              { label: 'Confidence', val: safeFeedback.scores?.confidence ?? 0, color: '#00F2FE', cls: 'fill-cyan' },
+              { label: 'Technical Depth', val: safeFeedback.scores?.technicalDepth ?? 0, color: '#10B981', cls: 'fill-emerald' },
+              { label: 'Reasoning', val: safeFeedback.scores?.reasoning ?? 0, color: '#F59E0B', cls: 'fill-amber' },
+              { label: 'Communication', val: safeFeedback.scores?.communication ?? 0, color: '#8B5CF6', cls: 'fill-violet' },
             ].map(m => (
               <div key={m.label} className="sf-metric-box">
                 <div className="sf-metric-row">
