@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Award, CheckCircle2, XCircle, Brain, BarChart2, Sparkles, RotateCcw, ArrowUpRight, Layers, Target, TrendingUp, Star } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -22,11 +22,51 @@ export default function StructuredFeedback({ feedback, onRestart }) {
   const levelDist = safeFeedback.levelDistribution || { EXPERT: 1, ADVANCED: 2, INTERMEDIATE: 1, BEGINNER: 0 };
   const totalAnswers = Object.values(levelDist).reduce((a, b) => a + b, 0);
 
+  const [historyList, setHistoryList] = useState([]);
+
   useEffect(() => {
     if ((safeFeedback.overallScore || 75) >= 70) {
       confetti({ particleCount: 110, spread: 85, origin: { y: 0.55 } });
     }
-  }, []);
+
+    // Save to history in localStorage
+    try {
+      const historyStr = localStorage.getItem('interview_history') || '[]';
+      const history = JSON.parse(historyStr);
+      
+      const currentSessionId = safeFeedback.session_id || `sess_${safeFeedback.overallScore}_${(safeFeedback.topicEvaluations || []).length}_${Date.now()}`;
+      const alreadyExists = history.some(h => h.session_id === currentSessionId);
+      
+      if (!alreadyExists && safeFeedback.overallScore !== undefined) {
+        const historyEntry = {
+          session_id: currentSessionId,
+          timestamp: new Date().toISOString(),
+          overallScore: safeFeedback.overallScore,
+          recommendation: safeFeedback.recommendation,
+          dominantLevel: safeFeedback.dominantLevel,
+          roundType: safeFeedback.roundType || 'General',
+          strengths: safeFeedback.keyStrengths || [],
+          gaps: safeFeedback.areasForImprovement || []
+        };
+        history.push(historyEntry);
+        localStorage.setItem('interview_history', JSON.stringify(history));
+        setHistoryList(history);
+      } else {
+        setHistoryList(history);
+      }
+    } catch (e) {
+      console.warn("Failed to save/load interview history:", e);
+    }
+  }, [safeFeedback]);
+
+  const sortedHistory = [...historyList].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const points = sortedHistory.map((h, i) => {
+    const x = sortedHistory.length > 1 
+      ? (i / (sortedHistory.length - 1)) * 400 + 50 
+      : 250;
+    const y = 130 - ((h.overallScore || 0) / 100) * 110;
+    return { x, y, ...h };
+  });
 
   return (
     <div className="sf-shell animate-fade-in">
@@ -211,6 +251,131 @@ export default function StructuredFeedback({ feedback, onRestart }) {
             ))}
           </div>
         </div>
+
+        {/* ── Interview Progress & History Dashboard ── */}
+        {historyList.length > 0 && (
+          <div className="sf-section mt-4" style={{
+            background: 'rgba(25, 20, 35, 0.4)',
+            border: '1px solid rgba(0, 242, 254, 0.15)',
+            borderRadius: '20px',
+            padding: '2rem',
+            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.25)',
+            backdropFilter: 'blur(8px)'
+          }}>
+            <h3 className="sf-section-title">
+              <TrendingUp size={17} style={{ color: '#00F2FE' }} />
+              <span>Interview Progress & History Dashboard</span>
+            </h3>
+
+            {historyList.length > 1 && (
+              <div className="sf-chart-container" style={{ margin: '1.5rem 0', textAlign: 'center' }}>
+                <h4 style={{ color: '#E2D7CD', fontSize: '0.95rem', marginBottom: '1.2rem', fontWeight: 600 }}>Overall Score Progression Trend</h4>
+                <div style={{ position: 'relative', width: '100%', height: '180px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', padding: '10px' }}>
+                  <svg viewBox="0 0 500 150" width="100%" height="100%" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#00F2FE" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#00F2FE" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    
+                    {/* Grid lines */}
+                    <line x1="40" y1="20" x2="460" y2="20" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                    <line x1="40" y1="75" x2="460" y2="75" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                    <line x1="40" y1="130" x2="460" y2="130" stroke="rgba(255,255,255,0.06)" />
+
+                    <text x="15" y="24" fill="rgba(255,255,255,0.3)" fontSize="8" fontFamily="monospace">100</text>
+                    <text x="15" y="79" fill="rgba(255,255,255,0.3)" fontSize="8" fontFamily="monospace">50</text>
+                    <text x="15" y="134" fill="rgba(255,255,255,0.3)" fontSize="8" fontFamily="monospace">0</text>
+
+                    {/* Area fill */}
+                    {points.length > 1 && (
+                      <path
+                        d={`M ${points[0].x} 130 ${points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 130 Z`}
+                        fill="url(#chart-grad)"
+                      />
+                    )}
+
+                    {/* Line path */}
+                    {points.length > 1 && (
+                      <path
+                        d={points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
+                        fill="none"
+                        stroke="#00F2FE"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    )}
+
+                    {/* Circles & Labels */}
+                    {points.map((p, idx) => (
+                      <g key={idx}>
+                        <circle cx={p.x} cy={p.y} r="5" fill="#FFFFFF" stroke="#00F2FE" strokeWidth="2.5" />
+                        <text x={p.x} y={p.y - 10} fill="#FFFFFF" fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                          {p.overallScore}%
+                        </text>
+                        <text x={p.x} y="144" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="monospace" textAnchor="middle">
+                          {p.roundType || 'General'}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {/* Strong and Weak Skills Aggregation */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+              <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '12px', padding: '1.25rem' }}>
+                <h4 style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem 0' }}>
+                  <Star size={15} /> Verified Strong Skills (Across Rounds)
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {Array.from(new Set(historyList.flatMap(h => h.strengths || []))).slice(0, 6).map((s, i) => (
+                    <span key={i} className="tag tag-emerald" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      {s.length > 35 ? s.substring(0, 35) + '...' : s}
+                    </span>
+                  ))}
+                  {historyList.length === 0 && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>Complete interviews to aggregate skills.</span>}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(245, 158, 11, 0.04)', border: '1px solid rgba(245, 158, 11, 0.15)', borderRadius: '12px', padding: '1.25rem' }}>
+                <h4 style={{ color: '#FBBF24', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem 0' }}>
+                  <TrendingUp size={15} /> Key Areas for Improvement
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {Array.from(new Set(historyList.flatMap(h => h.gaps || []))).slice(0, 6).map((g, i) => (
+                    <span key={i} className="tag tag-amber" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                      {g.length > 35 ? g.substring(0, 35) + '...' : g}
+                    </span>
+                  ))}
+                  {historyList.length === 0 && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>Complete interviews to aggregate gaps.</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* List of past sessions */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <h4 style={{ color: '#E2D7CD', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 600 }}>Past Interview Sessions</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
+                {[...historyList].reverse().map((h, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.6rem 1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#A0A0B0', fontFamily: 'monospace' }}>
+                        {new Date(h.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#FFFFFF' }}>{h.roundType || 'General'}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#A0A0B0' }}>{h.dominantLevel}</span>
+                    </div>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#00F2FE', fontFamily: 'monospace' }}>{h.overallScore}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── CTA ── */}
         <div className="sf-cta-row mt-4">

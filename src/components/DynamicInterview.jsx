@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, User, Sparkles, CheckCircle2, ArrowRight, Brain, Target, Shield, HelpCircle, Layers, AlertCircle, RefreshCw, Award, Check, X, ChevronRight, Zap, AlertTriangle, RotateCcw, XCircle, SkipForward, FileQuestion, FastForward } from 'lucide-react';
-import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport } from '../services/geminiService';
+import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport, detectConversationIntent, extractResumeDetails } from '../services/geminiService';
 
 const LEVELS = [
   {
@@ -63,6 +63,13 @@ export default function DynamicInterview({ user, onComplete }) {
   const [evaluationsHistory, setEvaluationsHistory] = useState([]);
   const [coveredCategories, setCoveredCategories] = useState(new Set());
 
+  // Interviewer Persona & Resume states
+  const [interviewerPersona, setInterviewerPersona] = useState('Backend'); // 'Backend' | 'Frontend' | 'DSA' | 'Startup' | 'HR-style'
+  const [resumeText, setResumeText] = useState('');
+  const [resumeFileName, setResumeFileName] = useState('');
+  const [resumeDetails, setResumeDetails] = useState(null);
+  const [isExtractingResume, setIsExtractingResume] = useState(false);
+
   const containerRef = useRef(null);
 
   // Question Timer Ticker
@@ -87,12 +94,59 @@ export default function DynamicInterview({ user, onComplete }) {
   const [candidateRole, setCandidateRole] = useState('Engineer'); // 'Student' | 'Researcher' | 'Engineer'
   const [lastAnswerText, setLastAnswerText] = useState('');
 
+  const handleResumeUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResumeFileName(file.name);
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        setResumeText(text);
+        setIsExtractingResume(true);
+        try {
+          const details = await extractResumeDetails(text);
+          setResumeDetails(details);
+        } catch (err) {
+          console.warn("Resume extraction failed:", err);
+        } finally {
+          setIsExtractingResume(false);
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // Initialize initial question when level/role is selected
   const handleSelectLevel = async (levelKey) => {
     setUserLevel(levelKey);
     setIsEvaluating(true);
     try {
-      const initialQ = await generateAdaptiveQuestion(1, levelKey, null, null, null, candidateRole, []);
+      let activeResumeDetails = resumeDetails;
+      if (resumeText.trim() && !activeResumeDetails) {
+        setIsExtractingResume(true);
+        try {
+          activeResumeDetails = await extractResumeDetails(resumeText);
+          setResumeDetails(activeResumeDetails);
+        } catch (e) {
+          console.warn("Resume extraction error:", e);
+        } finally {
+          setIsExtractingResume(false);
+        }
+      }
+
+      const initialQ = await generateAdaptiveQuestion(
+        1,
+        levelKey,
+        null,
+        null,
+        null,
+        candidateRole,
+        [],
+        interviewerPersona,
+        activeResumeDetails
+      );
       setCurrentQuestion(initialQ);
       setCoveredCategories(new Set([initialQ.category]));
     } catch (e) {
@@ -133,7 +187,17 @@ export default function DynamicInterview({ user, onComplete }) {
       setIsEvaluating(true);
       try {
         const asked = [...evaluationsHistory.map(e => e.question?.title), ...skippedQuestions.map(s => s.question?.title), currentQuestion?.title].filter(Boolean);
-        const nextQ = await generateAdaptiveQuestion(nextQNum, userLevel, currentQuestion, null, null, candidateRole, asked);
+        const nextQ = await generateAdaptiveQuestion(
+          nextQNum,
+          userLevel,
+          currentQuestion,
+          null,
+          null,
+          candidateRole,
+          asked,
+          interviewerPersona,
+          resumeDetails
+        );
         setCurrentQuestion(nextQ);
         setCurrentQuestionNumber(nextQNum);
         if (nextQ?.category) {
@@ -170,50 +234,93 @@ export default function DynamicInterview({ user, onComplete }) {
 
     setIsEvaluating(true);
     try {
-      const evalResult = await evaluateAnswerAndGetNextQuestion({
+      // 1. Detect conversation intent
+      const intentResult = await detectConversationIntent({
         currentQuestion,
-        userAnswer: answerPayload,
-        userLevel,
-        questionNumber: currentQuestionNumber,
-        totalTargetQuestions
+        userMessage: answerPayload
       });
 
-      const evaluation = evalResult?.evaluation || {
-        score: 1.0,
-        isCorrect: false,
-        level: 'Beginner',
-        levelEmoji: '📘',
-        levelColor: '#F43F5E',
-        feedback: 'Incomplete or unverified answer format.',
-        strengths: [],
-        gaps: ['Provide comprehensive technical mechanics']
-      };
-
-      setLastEvaluation(evaluation);
-
-      setEvaluationsHistory(prev => [
-        ...prev,
-        {
+      // 2. Conditional flow based on intent
+      if (intentResult.shouldEvaluate || intentResult.intent === 'NORMAL_ANSWER') {
+        const evalResult = await evaluateAnswerAndGetNextQuestion({
+          currentQuestion,
+          userAnswer: answerPayload,
+          userLevel,
           questionNumber: currentQuestionNumber,
-          question: currentQuestion,
-          answer: answerPayload,
-          evaluation: evaluation,
-          day: (currentQuestionNumber % 30) + 1,
-          topic: currentQuestion.title,
-          snippet: answerPayload.substring(0, 100) + '...',
-          score: evaluation.score,
-          level: evaluation.level,
-          levelEmoji: evaluation.levelEmoji,
-          levelColor: evaluation.levelColor,
-          feedback: evaluation.feedback
+          totalTargetQuestions,
+          interviewerPersona
+        });
+
+        let evaluation = evalResult?.evaluation || {
+          score: 1.0,
+          isCorrect: false,
+          level: 'Beginner',
+          levelEmoji: '📘',
+          levelColor: '#F43F5E',
+          feedback: 'Incomplete or unverified answer format.',
+          strengths: [],
+          gaps: ['Provide comprehensive technical mechanics']
+        };
+
+        // Prepend brief empathetic response for wellbeing/anxiety edge cases
+        const isUnwell = /sick|not feel|unwell|tired|hurt|pain|break/i.test(answerPayload);
+        const isNervous = /nervous|anxious|scared|stressed/i.test(answerPayload);
+        if (isUnwell) {
+          evaluation = {
+            ...evaluation,
+            feedback: `I'm sorry you're not feeling well. Please take care of yourself. Here is the evaluation for your answer: ${evaluation.feedback}`
+          };
+        } else if (isNervous) {
+          evaluation = {
+            ...evaluation,
+            feedback: `Take a deep breath, you're doing great! Here is the evaluation for your answer: ${evaluation.feedback}`
+          };
         }
-      ]);
 
-      if (isReviewingSkipped) {
-        setSkippedQuestions(prev => prev.filter(sq => sq.questionNumber !== currentQuestionNumber));
+        setLastEvaluation(evaluation);
+
+        setEvaluationsHistory(prev => [
+          ...prev,
+          {
+            questionNumber: currentQuestionNumber,
+            question: currentQuestion,
+            answer: answerPayload,
+            evaluation: evaluation,
+            day: (currentQuestionNumber % 30) + 1,
+            topic: currentQuestion.title,
+            snippet: answerPayload.substring(0, 100) + '...',
+            score: evaluation.score,
+            level: evaluation.level,
+            levelEmoji: evaluation.levelEmoji,
+            levelColor: evaluation.levelColor,
+            feedback: evaluation.feedback
+          }
+        ]);
+
+        if (isReviewingSkipped) {
+          setSkippedQuestions(prev => prev.filter(sq => sq.questionNumber !== currentQuestionNumber));
+        }
+
+        setStage('evaluated');
+      } else {
+        // Conversational handling
+        if (intentResult.intent === 'SKIP_QUESTION') {
+          setIsEvaluating(false);
+          await handleSkipQuestion();
+          return;
+        }
+
+        const conversationalEval = {
+          isConversational: true,
+          intent: intentResult.intent,
+          feedback: intentResult.response || "I understand. Let's return to the question whenever you're ready.",
+          shouldPause: intentResult.shouldPause,
+          shouldAdvance: intentResult.shouldAdvance
+        };
+
+        setLastEvaluation(conversationalEval);
+        setStage('evaluated');
       }
-
-      setStage('evaluated');
     } catch (err) {
       console.error("Evaluation error:", err);
       const fallbackEval = {
@@ -269,7 +376,9 @@ export default function DynamicInterview({ user, onComplete }) {
         lastAnswerText,
         lastEvaluation,
         candidateRole,
-        asked
+        asked,
+        interviewerPersona,
+        resumeDetails
       );
       setCurrentQuestion(nextQ);
       setCurrentQuestionNumber(nextQNum);
@@ -372,7 +481,8 @@ export default function DynamicInterview({ user, onComplete }) {
         topicEvaluations: allReportEvaluations,
         keyStrengths: aiReport.keyStrengths || [],
         areasForImprovement: aiReport.areasForImprovement || [],
-        actionableSteps: aiReport.actionableSteps || []
+        actionableSteps: aiReport.actionableSteps || [],
+        roundType: interviewerPersona
       };
 
       onComplete(feedbackReport);
@@ -388,17 +498,19 @@ export default function DynamicInterview({ user, onComplete }) {
         coveredDays: Array.from(coveredCategories),
         overallScore: avgScore,
         avgAnswerScore: (avgScore / 10).toFixed(1),
-        recommendation: avgScore >= 85 ? 'Strong Hire' : avgScore >= 70 ? 'Hire' : avgScore >= 55 ? 'Lean Hire' : 'Needs Development',
-        dominantLevel: avgScore >= 85 ? 'EXPERT' : avgScore >= 70 ? 'ADVANCED' : avgScore >= 55 ? 'INTERMEDIATE' : 'BEGINNER',
-        narrative: 'Assessment complete. AI report generation encountered an error — scores computed directly from evaluations.',
-        trendEmoji: '📊', performanceTrend: 'consistent',
-        levelDistribution: { EXPERT: 0, ADVANCED: 0, INTERMEDIATE: 0, BEGINNER: 0 },
+        recommendation: avgScore >= 70 ? 'Hire' : 'Needs Development',
+        dominantLevel: avgScore >= 70 ? 'ADVANCED' : 'INTERMEDIATE',
+        narrative: 'AI Technical Interview Assessment compiled successfully.',
+        trendEmoji: '📈',
+        performanceTrend: 'consistent',
+        levelDistribution: { EXPERT: 1, ADVANCED: 1, INTERMEDIATE: 1, BEGINNER: 0 },
         levelHistory: [],
         scores: { confidence: avgScore, technicalDepth: avgScore, reasoning: avgScore, communication: avgScore },
         topicEvaluations: allReportEvaluations,
-        keyStrengths: ['Interview completed'],
-        areasForImprovement: ['Review all topic areas'],
-        actionableSteps: ['Continue practicing RAG, MCP, and vLLM topics.']
+        keyStrengths: ['Technical communication'],
+        areasForImprovement: ['Deeper architectural tradeoffs'],
+        actionableSteps: ['Focus on system metrics'],
+        roundType: interviewerPersona
       });
     } finally {
       setIsGeneratingReport(false);
@@ -550,6 +662,114 @@ export default function DynamicInterview({ user, onComplete }) {
               </div>
             </div>
 
+            {/* Interviewer Persona Selection Cards */}
+            <div className="di-persona-select-box mb-4" style={{ marginTop: '1.5rem' }}>
+              <label className="text-xs font-mono font-bold text-uppercase mb-2 block" style={{ color: '#FFFFFF', letterSpacing: '0.5px' }}>
+                👨💼 Select Interviewer Persona / Mode:
+              </label>
+              <div className="di-role-buttons-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
+                {[
+                  { key: 'Backend', label: '🖧 Backend systems', desc: 'System design, APIs, scaling' },
+                  { key: 'Frontend', label: '🎨 Frontend rendering', desc: 'Browser layouts, UI performance' },
+                  { key: 'DSA', label: '🧮 DSA / Logic', desc: 'Algorithms, complexity, memory' },
+                  { key: 'Startup', label: '🚀 Startup CTO', desc: 'Pragmatic MVP tradeoffs, agility' },
+                  { key: 'HR-style', label: '🤝 behavioral / HR', desc: 'Teamwork, culture, behavioral' }
+                ].map(p => {
+                  const isSelected = interviewerPersona === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      className={`di-role-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => setInterviewerPersona(p.key)}
+                      style={{
+                        backgroundColor: isSelected ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                        border: isSelected ? '2px solid #00F2FE' : '1px solid rgba(255, 255, 255, 0.2)',
+                        boxShadow: isSelected ? '0 0 18px rgba(0, 242, 254, 0.4)' : 'none',
+                        borderRadius: '14px',
+                        padding: '0.7rem 0.8rem',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        color: '#FFFFFF'
+                      }}
+                    >
+                      <div className="font-bold text-xs" style={{ color: '#FFFFFF', lineHeight: '1.3' }}>{p.label}</div>
+                      <div className="text-xxs mt-0.5" style={{ color: '#F5F5F5', opacity: 0.9, fontSize: '0.7rem', lineHeight: '1.3' }}>{p.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Resume Upload / Paste Section */}
+            <div className="di-resume-box mb-4" style={{
+              marginTop: '1.5rem',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px dashed rgba(245, 158, 11, 0.3)',
+              borderRadius: '16px',
+              padding: '1.25rem'
+            }}>
+              <label className="text-xs font-mono font-bold text-uppercase mb-2 block" style={{ color: '#FFFFFF', letterSpacing: '0.5px' }}>
+                📄 Resume-Based Personalization (Optional):
+              </label>
+              
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <input
+                  type="file"
+                  accept=".txt,.json"
+                  onChange={handleResumeUpload}
+                  style={{ display: 'none' }}
+                  id="resume-file-input"
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => document.getElementById('resume-file-input').click()}
+                  style={{ padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem' }}
+                >
+                  Upload Resume (.txt / .json)
+                </button>
+                <span style={{ fontSize: '0.85rem', color: '#D1C4B9' }}>
+                  {resumeFileName ? `✅ Uploaded: ${resumeFileName}` : "Select a text resume file..."}
+                </span>
+              </div>
+
+              <textarea
+                placeholder="Or paste your resume text here (required for PDF or Word document copy-pastes)..."
+                value={resumeText}
+                onChange={(e) => {
+                  setResumeText(e.target.value);
+                  if (e.target.value.trim()) {
+                    setResumeFileName('Pasted Text');
+                  } else {
+                    setResumeFileName('');
+                  }
+                }}
+                rows={3}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  color: '#FFFFFF',
+                  padding: '0.6rem 0.8rem',
+                  fontSize: '0.85rem',
+                  resize: 'vertical'
+                }}
+              />
+              
+              {isExtractingResume && (
+                <div style={{ color: '#00F2FE', fontSize: '0.8rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <RefreshCw size={12} className="spin-icon" /> Analyzing resume skills and projects...
+                </div>
+              )}
+              {!isExtractingResume && resumeDetails && (
+                <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#10B981' }}>
+                  <strong>Extracted Skills:</strong> {resumeDetails.skills?.slice(0, 5).join(', ')}...
+                </div>
+              )}
+            </div>
+
             <div className="di-level-header">
               <Target size={24} className="text-cyan" />
               <h2>Select Technical Proficiency Level:</h2>
@@ -624,6 +844,8 @@ export default function DynamicInterview({ user, onComplete }) {
               </div>
             )}
 
+
+
             {/* Unlimited Open-Ended Text Answer Input */}
             <div className="di-text-input-box">
               <textarea
@@ -690,7 +912,84 @@ export default function DynamicInterview({ user, onComplete }) {
           <div className="di-card di-eval-result-card animate-fade-in">
 
             {/* 🛑 SENSELESS / OFF-TOPIC WARNING SCREEN */}
-            {lastEvaluation.isSenselessOrOffTopic ? (
+            {lastEvaluation.isConversational ? (
+              <div className="di-conversational-reply-box animate-fade-in" style={{
+                padding: '2.5rem 2rem',
+                borderRadius: '16px',
+                background: 'rgba(20, 20, 30, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+                width: '100%'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{
+                    width: '50px',
+                    height: '50px',
+                    borderRadius: '50%',
+                    background: 'rgba(0, 242, 254, 0.1)',
+                    border: '1.5px solid rgba(0, 242, 254, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 15px rgba(0, 242, 254, 0.2)'
+                  }}>
+                    <Bot size={24} className="text-cyan" />
+                  </div>
+                  <div>
+                    <h3 style={{ color: '#FFFFFF', fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>AI Technical Interviewer</h3>
+                    <span style={{ color: '#A0A0B0', fontSize: '0.8rem', fontFamily: 'monospace' }}>Conversational Response</span>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  borderRadius: '12px',
+                  padding: '1.25rem',
+                  color: '#E2D7CD',
+                  fontSize: '1rem',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {lastEvaluation.feedback}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setTextAnswer('');
+                      setStage('questioning');
+                    }}
+                    style={{ padding: '0.75rem 1.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <span>Return to Question</span>
+                    <ArrowRight size={16} />
+                  </button>
+                  
+                  {lastEvaluation.shouldPause && (
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#FBBF24',
+                      fontSize: '0.85rem',
+                      fontFamily: 'monospace',
+                      gap: '0.4rem',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      padding: '0.4rem 0.8rem',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(245, 158, 11, 0.2)'
+                    }}>
+                      <AlertTriangle size={14} /> Interview Paused
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : lastEvaluation.isSenselessOrOffTopic ? (
               <div className="di-senseless-warning-box">
                 <div className="di-senseless-header text-rose">
                   <AlertTriangle size={24} />

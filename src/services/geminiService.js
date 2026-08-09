@@ -154,16 +154,17 @@ export function checkPlagiarism(answer, questionText, hintText) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, arg5) {
-  let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions;
+  let userLevel, currentQuestion, userAnswer, questionNumber, totalTargetQuestions, interviewerPersona;
 
   if (typeof arg1 === 'object' && arg1 !== null && arg1.currentQuestion) {
-    ({ userLevel = 'Intermediate', currentQuestion, userAnswer, questionNumber = 1, totalTargetQuestions = 8 } = arg1);
+    ({ userLevel = 'Intermediate', currentQuestion, userAnswer, questionNumber = 1, totalTargetQuestions = 8, interviewerPersona = 'Backend' } = arg1);
   } else {
     currentQuestion = arg1;
     userAnswer = arg2;
     userLevel = arg3 || 'Intermediate';
     questionNumber = arg4 || 1;
     totalTargetQuestions = arg5 || 8;
+    interviewerPersona = 'Backend';
   }
 
   // 1. Run plagiarism detection first
@@ -172,10 +173,22 @@ export async function evaluateAnswerAndGetNextQuestion(arg1, arg2, arg3, arg4, a
     return { evaluation: plagResult };
   }
 
+  const evaluationPersonaCriteria = {
+    Backend: "Evaluate with a strong focus on data modeling, scaling limits, caching strategies, latency bottlenecks, database queries, and backend security edge cases.",
+    Frontend: "Evaluate with a strong focus on render efficiency, DOM/CSS layout design, browser security (XSS/CSRF), responsive breakpoints, and client-side state optimization.",
+    DSA: "Evaluate with a strong focus on algorithmic accuracy, time/space complexity (Big O bounds), optimal data structure choices, and edge-case memory usage.",
+    Startup: "Evaluate with a strong focus on pragmatic architectural tradeoffs, speed of development, building from MVP to scale, and developer agility.",
+    "HR-style": "Evaluate with a strong focus on technical communication, collaboration paradigms, constructive sprint management, behavioral reasoning, and problem solving."
+  };
+  const selectedCriteria = evaluationPersonaCriteria[interviewerPersona] || evaluationPersonaCriteria.Backend;
+
   const prompt = `
 <evaluation_task>
-You are a STRICT Senior AI Engineering Technical Interviewer performing a rigorous factual evaluation.
-Evaluate the candidate's answer STRICTLY and HONESTLY based on its actual technical content.
+You are a STRICT Senior AI Technical Interviewer performing a rigorous factual evaluation.
+Evaluate the candidate's answer STRICTLY and HONESTLY based on its actual technical content and context.
+
+INTERVIEWER EVALUATION CRITERIA (PERSONA FOCUS):
+${selectedCriteria}
 
 INTERVIEW CONTEXT:
 - Question #${questionNumber} of ${totalTargetQuestions}
@@ -459,7 +472,17 @@ function buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions
 // ADAPTIVE QUESTION GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate', previousQuestion = null, previousAnswer = null, previousEvaluation = null, candidateRole = 'Engineer', askedQuestionTitles = []) {
+export async function generateAdaptiveQuestion(
+  qNum,
+  userLevel = 'Intermediate',
+  previousQuestion = null,
+  previousAnswer = null,
+  previousEvaluation = null,
+  candidateRole = 'Engineer',
+  askedQuestionTitles = [],
+  interviewerPersona = 'Backend',
+  resumeDetails = null
+) {
   const prevScore = previousEvaluation?.score || 7.0;
   const isHighPerformer = prevScore >= 7.5;
   const isLowPerformer = prevScore <= 4.0;
@@ -470,6 +493,24 @@ export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate',
     Engineer: "Focus on production AI systems, distributed vLLM serving, HNSW vector database indexing, MCP protocol integration, OpenTelemetry tracing, and VRAM optimization."
   };
   const roleContext = personaGuidance[candidateRole] || personaGuidance.Engineer;
+
+  const interviewerGuidance = {
+    Backend: "You are a Backend Systems Architect. Focus questions on system design, database schemas, scaling, caching, API protocols (REST/gRPC/GraphQL), concurrent workers, queue systems, and backend security.",
+    Frontend: "You are a Lead Frontend Engineer. Focus questions on web performance, HTML/CSS layouts, DOM manipulation, browser rendering, frameworks (React/Vue/etc.), security (XSS/CSRF), client state, and responsive design.",
+    DSA: "You are an Algorithms & Data Structures Expert. Focus questions on algorithmic logic, algorithmic complexity (Big O), trees, graphs, sorting, searching, dynamic programming, and space/time tradeoffs.",
+    Startup: "You are a Startup CTO. Focus questions on rapid prototyping, pragmatic tradeoffs, building from zero to MVP, serverless architectures, devops simplicity, agile engineering, and vertical optimization.",
+    "HR-style": "You are a Technical Recruiting Director. Focus behavioral questions on behavioral scenarios, engineering teamwork, code review conflicts, sprint prioritization, learning from failure, leadership, and collaboration."
+  };
+  const selectedPersonaContext = interviewerGuidance[interviewerPersona] || interviewerGuidance.Backend;
+
+  const resumeContext = resumeDetails ? `
+CANDIDATE RESUME PROFILE:
+- Extracted Skills: ${resumeDetails.skills?.join(', ') || 'N/A'}
+- Extracted Projects:
+${resumeDetails.projects?.map(p => `- ${p.name}: ${p.description}`).join('\n') || 'N/A'}
+
+INSTRUCTION: Integrate the candidate's actual projects or skills from their resume context directly into the question scenario to personalize the interview. Ask them how they would scale, redesign, or apply standard concepts to their own projects or using their skills.
+` : '';
 
   const askedList = askedQuestionTitles.length > 0
     ? askedQuestionTitles.map((t, idx) => `- Q${idx+1}: "${t}"`).join('\n')
@@ -486,6 +527,11 @@ export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate',
   const prompt = `
 <question_generator>
 You are an Expert AI Technical Interviewer creating Question #${qNum}.
+
+INTERVIEWER PERSONA STYLE:
+${selectedPersonaContext}
+
+${resumeContext}
 
 CANDIDATE PROFILE:
 - Level: ${userLevel}
@@ -590,3 +636,260 @@ Instructions:
   if (q.includes('format') || q.includes('question')) return "⚡ **Interview Format**: Adaptive scenarios covering RAG, Vector DBs, MCP, Agents, LoRA. 8–20 questions, live feedback, question timer, skip & review!";
   return "👋 **Welcome to InterviewAgent.AI!** Powered by Llama 3.3. Click **Candidate Login** to begin your technical assessment!";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATIONAL INTENT DETECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function localIntentFallback(userMessage, currentQuestion) {
+  const msg = (userMessage || '').trim().toLowerCase();
+  const wordCount = msg.split(/\s+/).filter(Boolean).length;
+  
+  // Insults, casual banter, general questions, greetings
+  const isOffTopic = /fool|stupid|dumb|idiot|suck|useless|jerk|bot|creator|created|who are you|weather|what is the time|hello|hi|hey|how are you|how's it going/i.test(msg);
+  
+  // If the message is off-topic or looks like an insult, classify as OFF_TOPIC
+  if (isOffTopic) {
+    return {
+      intent: "OFF_TOPIC",
+      confidence: 0.9,
+      response: "Let's stay focused on the technical interview. Whenever you're ready, please provide your answer to the question above.",
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  // Check if it's a technical answer first, even if it has some conversation-related words
+  const hasTechnicalTerms = /hnsw|bm25|rrf|mcp|vllm|rag|lora|paged|attention|embedding|vector|chunk|polymorphism|interface|class|function|method|object|inherit|java|oop|encapsulate/i.test(msg);
+  
+  if (wordCount > 6 && hasTechnicalTerms) {
+    return {
+      intent: "NORMAL_ANSWER",
+      confidence: 0.9,
+      response: "",
+      shouldEvaluate: true,
+      shouldAdvance: true,
+      shouldPause: false
+    };
+  }
+
+  // Short non-technical messages
+  if (wordCount < 4 && !hasTechnicalTerms) {
+    return {
+      intent: "GENERAL_CONVERSATION",
+      confidence: 0.9,
+      response: "I didn't quite catch that as a technical response. Could you please explain your answer in more detail? Alternatively, you can skip this question.",
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  if (/^(i don't know|i am not sure|i'm not sure|i cant remember|i can't remember|don't know this|not sure)$/i.test(msg) || 
+      (msg.includes("don't know") && msg.length < 30) ||
+      (msg.includes("not sure") && msg.length < 30)) {
+    return {
+      intent: "NOT_SURE",
+      confidence: 0.9,
+      response: currentQuestion?.hint ? `No problem. Here's a quick hint: ${currentQuestion.hint}. Try your best, or you can skip this question if you prefer.` : "No problem! Take a guess or explain what you know about the topic, or feel free to skip the question.",
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  if (msg.includes("skip") && msg.length < 30) {
+    return {
+      intent: "SKIP_QUESTION",
+      confidence: 0.9,
+      response: "",
+      shouldEvaluate: false,
+      shouldAdvance: true,
+      shouldPause: false
+    };
+  }
+
+  if (msg.includes("repeat") || msg.includes("explain the question") || msg.includes("didn't understand") || msg.includes("dont understand")) {
+    return {
+      intent: "REPEAT_QUESTION",
+      confidence: 0.9,
+      response: `Certainly! The question is: "${currentQuestion?.title}". We are looking to understand your approach and trade-offs. ${currentQuestion?.hint ? 'Pro-Tip: ' + currentQuestion.hint : ''}`,
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  if (msg.includes("sick") || msg.includes("not feeling well") || msg.includes("not well") || msg.includes("unwell") || msg.includes("need a break") || msg.includes("tired")) {
+    return {
+      intent: "WELLBEING",
+      confidence: 0.9,
+      response: "I'm sorry you're not feeling well. Please don't push yourself. We can pause the interview and you can continue when you're ready. Would you like to take a short break?",
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: true
+    };
+  }
+
+  if (msg.includes("nervous") || msg.includes("scared") || msg.includes("anxious") || msg.includes("stressed")) {
+    return {
+      intent: "NERVOUS_OR_ANXIOUS",
+      confidence: 0.9,
+      response: "That's completely understandable. Take a moment, and whenever you're ready, we can continue. There's no need to rush.",
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  if (msg.includes("ready") || msg.includes("continue") || msg.includes("resume") || msg.includes("feeling better")) {
+    return {
+      intent: "RESUME_INTERVIEW",
+      confidence: 0.9,
+      response: `Glad you're ready! Let's resume. The active question is: "${currentQuestion?.title}"`,
+      shouldEvaluate: false,
+      shouldAdvance: false,
+      shouldPause: false
+    };
+  }
+
+  // Default fallback is NORMAL_ANSWER
+  return {
+    intent: "NORMAL_ANSWER",
+    confidence: 0.5,
+    response: "",
+    shouldEvaluate: true,
+    shouldAdvance: true,
+    shouldPause: false
+  };
+}
+
+export async function detectConversationIntent({ currentQuestion, userMessage }) {
+  const prompt = `
+You are an AI Interviewer Assistant. Classify the candidate's message and determine the correct system actions.
+
+CURRENT QUESTION:
+- Title: "${currentQuestion?.title || ''}"
+- Hint: "${currentQuestion?.hint || ''}"
+
+CANDIDATE'S MESSAGE:
+"${userMessage}"
+
+CLASSIFICATION GUIDELINES & INTENTS:
+1. NORMAL_ANSWER: The candidate is actually answering the interview question (even if they also mention they are tired/nervous/sick but proceed to explain the technical concepts).
+   - Edge case: If the message contains BOTH a technical explanation and wellbeing/nervous status (e.g. "I'm not feeling well, but polymorphism is..."), you MUST classify it as NORMAL_ANSWER.
+   - shouldEvaluate = true, shouldAdvance = true, shouldPause = false, response = ""
+
+2. NOT_SURE: Candidate expresses uncertainty, lack of knowledge, or confusion about the answer (e.g. "I don't know", "I'm not sure", "I can't remember", "I don't know this").
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: A supportive conversational message. Offer a small hint or guide them to try their best (without revealing the full answer).
+
+3. REPEAT_QUESTION: Candidate asks to repeat, clarify, or explain the question (e.g. "Can you repeat?", "I don't understand the question", "Explain it").
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: Rephrase or repeat the current question clearly and supportively.
+
+4. SKIP_QUESTION: Candidate explicitly asks to skip the question (e.g. "Skip this", "Can we skip?").
+   - shouldEvaluate = false, shouldAdvance = true, shouldPause = false
+   - response: ""
+
+5. WELLBEING: Candidate mentions feeling unwell, sick, tired, needing a break, etc. (and does NOT try to answer the question).
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = true
+   - response: An empathetic and brief message suggesting a break or pause. Example: "I'm sorry you're not feeling well. Please don't push yourself. We can pause the interview and you can continue when you're ready. Would you like to take a short break?"
+
+6. NERVOUS_OR_ANXIOUS: Candidate expresses anxiety, stress, or nervousness (e.g. "I'm nervous", "I'm stressed", "I'm scared").
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: An encouraging and reassuring message. Example: "That's completely understandable. Take a moment, and whenever you're ready, we can continue. There's no need to rush."
+
+7. OFF_TOPIC: Candidate talks about unrelated things (e.g. weather, general questions, asking who created this, or making off-topic remarks, insults, or random comments like "you are fool", "you are stupid").
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: A polite and brief response that redirects them back to the active question.
+
+8. RESUME_INTERVIEW: Candidate states they are ready to continue or resume after a pause or break (e.g. "I'm ready", "Let's continue", "Continue", "I'm feeling better").
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: A friendly welcoming message resuming the interview.
+
+9. GENERAL_CONVERSATION: Normal friendly conversation, greetings (like "hello", "hi", "how are you"), or casual remarks that do not answer the question.
+   - shouldEvaluate = false, shouldAdvance = false, shouldPause = false
+   - response: A brief, natural response returning them to the interview.
+
+Return ONLY this JSON schema (do not wrap in markdown or backticks, return raw JSON):
+{
+  "intent": "NORMAL_ANSWER | NOT_SURE | REPEAT_QUESTION | SKIP_QUESTION | WELLBEING | NERVOUS_OR_ANXIOUS | OFF_TOPIC | RESUME_INTERVIEW | GENERAL_CONVERSATION",
+  "confidence": <decimal between 0 and 1>,
+  "response": "<conversational text response for the candidate>",
+  "shouldEvaluate": <boolean>,
+  "shouldAdvance": <boolean>,
+  "shouldPause": <boolean>
+}
+`;
+
+  try {
+    const content = await callGroq(prompt, { model: 'llama-3.3-70b-versatile', temperature: 0.1, isJson: true });
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.intent) {
+        return parsed;
+      }
+    }
+  } catch (groqErr) {
+    console.warn("Groq intent detection failed, falling back to local detection:", groqErr?.message);
+  }
+
+  return localIntentFallback(userMessage, currentQuestion);
+}
+
+export async function extractResumeDetails(resumeText) {
+  const prompt = `
+Analyze the following resume text and extract the candidate's core technical skills and main projects.
+
+RESUME TEXT:
+"""
+${resumeText}
+"""
+
+Return ONLY this JSON schema (do not wrap in markdown or backticks, return raw JSON):
+{
+  "skills": ["skill1", "skill2", "skill3", ...],
+  "projects": [
+    {
+      "name": "Project Name",
+      "description": "Short description of what the project did and technologies used"
+    }
+  ]
+}
+`;
+
+  try {
+    const content = await callGroq(prompt, { model: 'llama-3.3-70b-versatile', temperature: 0.1, isJson: true });
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.skills) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Groq resume extraction failed, returning fallback:", err);
+  }
+
+  // Local fallback parser
+  const skills = [];
+  const words = resumeText.toLowerCase();
+  const techTerms = ['react', 'vue', 'angular', 'node', 'python', 'javascript', 'typescript', 'go', 'rust', 'c++', 'java', 'sql', 'nosql', 'mongodb', 'postgresql', 'docker', 'kubernetes', 'aws', 'gcp', 'azure', 'pytorch', 'tensorflow', 'llm', 'rag', 'groq', 'llama', 'openai', 'gemini', 'mcp'];
+  techTerms.forEach(term => {
+    if (words.includes(term)) {
+      skills.push(term.charAt(0).toUpperCase() + term.slice(1));
+    }
+  });
+
+  return {
+    skills: skills.length > 0 ? skills : ["Software Development", "System Design"],
+    projects: []
+  };
+}
+
+
