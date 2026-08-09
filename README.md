@@ -4,15 +4,8 @@
 
 ## 🎥 Project Demo
 
-[![AI-INTERVIEW-AGENT Demo](https://img.youtube.com/vi/YH21yye-NU0/maxresdefault.jpg)](https://youtu.be/YH21yye-NU0)
-
 [![YouTube](https://img.shields.io/badge/▶%20Watch%20on%20YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/YH21yye-NU0)
 
----
-
-## 🚀 What is AI-INTERVIEW-AGENT?
-
-AI-INTERVIEW-AGENT is an AI-powered technical interview platform that conducts personalized interviews, evaluates candidate responses, tracks performance, and generates a structured final assessment.
 ---
 
 ## 🚀 What is AI-INTERVIEW-AGENT?
