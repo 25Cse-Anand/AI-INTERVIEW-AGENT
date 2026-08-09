@@ -1,3 +1,15 @@
+# 🤖 AI-INTERVIEW-AGENT
+
+> An AI-powered personalized technical interview platform.
+
+## 🎥 Project Demo
+
+[![AI-INTERVIEW-AGENT Demo](https://img.youtube.com/vi/YH21yye-NU0/maxresdefault.jpg)](https://youtu.be/YH21yye-NU0)
+
+**▶️ [Watch the Full Demo on YouTube](https://youtu.be/YH21yye-NU0)**
+
+---
+
 # InterviewAgent.AI — Enterprise SaaS Landing Page & AI Technical Interviewer
 
 A high-converting SaaS landing page and dynamic technical interviewing platform powered by **Gemini 3.5 / 2.0 Flash Lite API** built for 31-Day Enterprise AI Engineering Cohorts.
