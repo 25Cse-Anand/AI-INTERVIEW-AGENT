@@ -1,7 +1,10 @@
-### 🎥 Watch the Demo
+## 🎥 Project Demo
 
-**[▶️ Watch the Full Project Demo](https://youtu.be/YH21yye-NU0)**
+[![AI-INTERVIEW-AGENT Demo](https://img.youtube.com/vi/YH21yye-NU0/maxresdefault.jpg)](https://youtu.be/YH21yye-NU0)
 
+[![YouTube](https://img.shields.io/badge/▶%20Watch%20on%20YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/YH21yye-NU0)
+
+---
 ---
 
 ## 🚀 What is AI-INTERVIEW-AGENT?
