@@ -1,37 +1,18 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// Groq-only API Service
 
+let aiProvider = 'groq';
 
-const DEFAULT_GEMINI_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
-const DEFAULT_GROQ_KEY = import.meta.env?.VITE_GROQ_API_KEY || '';
-
-let geminiApiKey = typeof window !== 'undefined'
-  ? (localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_KEY)
-  : DEFAULT_GEMINI_KEY;
-
-let aiProvider = typeof window !== 'undefined'
-  ? (localStorage.getItem('ai_provider') || 'groq')
-  : 'groq';
-
-let groqApiKey = typeof window !== 'undefined'
-  ? (localStorage.getItem('groq_api_key') || DEFAULT_GROQ_KEY)
-  : DEFAULT_GROQ_KEY;
-  
+// Exported key managers kept for compatibility with other components
 export function setGeminiApiKey(key) {
-  geminiApiKey = key ? key.trim() : DEFAULT_GEMINI_KEY;
-  if (typeof window !== 'undefined' && geminiApiKey) {
-    localStorage.setItem('gemini_api_key', geminiApiKey);
-  }
+  // no-op
 }
 
 export function getGeminiApiKey() {
-  return geminiApiKey || DEFAULT_GEMINI_KEY;
+  return '';
 }
 
 export function setAiProvider(provider) {
-  aiProvider = 'groq';
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('ai_provider', 'groq');
-  }
+  // no-op
 }
 
 export function getAiProvider() {
@@ -39,14 +20,59 @@ export function getAiProvider() {
 }
 
 export function setGroqApiKey(key) {
-  groqApiKey = key ? key.trim() : DEFAULT_GROQ_KEY;
-  if (typeof window !== 'undefined' && groqApiKey) {
-    localStorage.setItem('groq_api_key', groqApiKey);
+  if (typeof window !== 'undefined' && key) {
+    localStorage.setItem('groq_api_key', key.trim());
   }
 }
 
 export function getGroqApiKey() {
-  return groqApiKey || DEFAULT_GROQ_KEY;
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('groq_api_key') || import.meta.env?.VITE_GROQ_API_KEY || '';
+  }
+  return import.meta.env?.VITE_GROQ_API_KEY || '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REUSABLE GROQ API CALLER
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function callGroq(prompt, options = {}) {
+  const apiKey = getGroqApiKey();
+  if (!apiKey) {
+    throw new Error("Missing VITE_GROQ_API_KEY environment variable. Please configure it in your .env file.");
+  }
+
+  const model = options.model || 'llama-3.3-70b-versatile';
+  const temperature = options.temperature ?? 0.7;
+  const isJson = options.isJson ?? true;
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      temperature: temperature,
+      response_format: isJson ? { type: 'json_object' } : undefined
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq API Error (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Empty response or invalid format received from Groq API.");
+  }
+  return content;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,41 +150,6 @@ export function checkPlagiarism(answer, questionText, hintText) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GROQ CLIENT INTEGRATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function callGroqCompletions(prompt, isJson = true) {
-  const key = getGroqApiKey();
-  if (!key) {
-    throw new Error("Groq API key not set.");
-  }
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.1,
-      response_format: isJson ? { type: 'json_object' } : undefined
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API Error (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // PER-ANSWER EVALUATOR
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -229,64 +220,23 @@ Return ONLY this JSON (no markdown, no code fences):
 }
 </evaluation_task>`;
 
-  // 2. Query selected provider (Groq or Gemini)
-  if (getAiProvider() === 'groq' && getGroqApiKey()) {
-    try {
-      const response = await callGroqCompletions(prompt, true);
-      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed?.evaluation && typeof parsed.evaluation.score === 'number') {
-          parsed.evaluation.score = Math.min(10.0, Math.max(1.0, parsed.evaluation.score));
-          return {
-            ...parsed,
-            _generatedBy: 'Groq'
-          };
-        }
+  // 2. Query Groq API
+  try {
+    const content = await callGroq(prompt, { model: 'llama-3.3-70b-versatile', temperature: 0.1, isJson: true });
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.evaluation && typeof parsed.evaluation.score === 'number') {
+        parsed.evaluation.score = Math.min(10.0, Math.max(1.0, parsed.evaluation.score));
+        return {
+          ...parsed,
+          _generatedBy: 'Groq'
+        };
       }
-    } catch (groqErr) {
-      console.warn("Groq evaluation failed, falling back to Gemini:", groqErr?.message);
     }
-  }
-
-  // Gemini evaluation logic
-  const activeKey = getGeminiApiKey();
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-      const modelOptions = [
-        { model: 'gemini-2.5-flash', tools: [{ googleSearch: {} }] },
-        { model: 'gemini-2.5-flash-lite', tools: [] }
-      ];
-
-      for (const opts of modelOptions) {
-        try {
-          const modelConfig = { model: opts.model };
-          if (opts.tools && opts.tools.length > 0) modelConfig.tools = opts.tools;
-          const model = genAI.getGenerativeModel(modelConfig);
-          const result = await model.generateContent(prompt);
-          const text = result.response.text();
-          const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed?.evaluation && typeof parsed.evaluation.score === 'number') {
-              parsed.evaluation.score = Math.min(10.0, Math.max(1.0, parsed.evaluation.score));
-              return {
-                ...parsed,
-                _generatedBy: 'Gemini'
-              };
-            }
-          }
-        } catch (modelErr) {
-          console.warn(`Evaluation with model ${opts.model} failed, trying next...`, modelErr?.message);
-        }
-      }
-    } catch (err) {
-      console.warn("Gemini API evaluation error:", err);
-    }
+  } catch (groqErr) {
+    console.warn("Groq evaluation failed, falling back to local evaluation:", groqErr?.message);
   }
 
   // Local fallback with dynamic scoring
@@ -436,46 +386,17 @@ Return ONLY this JSON (no markdown, no code fences):
 }
 </final_report_task>`;
 
-  // 1. Query selected provider (Groq or Gemini)
-  if (getAiProvider() === 'groq' && getGroqApiKey()) {
-    try {
-      const response = await callGroqCompletions(prompt, true);
-      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed?.overallScore !== undefined) return parsed;
-      }
-    } catch (groqErr) {
-      console.warn("Groq report generation failed, falling back to Gemini:", groqErr?.message);
+  // 1. Query Groq API
+  try {
+    const content = await callGroq(prompt, { model: 'llama-3.3-70b-versatile', temperature: 0.1, isJson: true });
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.overallScore !== undefined) return parsed;
     }
-  }
-
-  // Gemini report generation
-  const activeKey = getGeminiApiKey();
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-      const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-      for (const modelName of models) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const result = await model.generateContent(prompt);
-          const text = result.response.text();
-          const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed?.overallScore !== undefined) return parsed;
-          }
-        } catch (e) {
-          console.warn(`Report generation with ${modelName} failed, trying next...`, e?.message);
-        }
-      }
-    } catch (err) {
-      console.warn("Final report generation error:", err);
-    }
+  } catch (groqErr) {
+    console.warn("Groq report generation failed, falling back to local fallback report:", groqErr?.message);
   }
 
   return buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions, coveredCategories });
@@ -539,8 +460,6 @@ function buildLocalFallbackReport({ rawAvg, evaluationsHistory, skippedQuestions
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function generateAdaptiveQuestion(qNum, userLevel = 'Intermediate', previousQuestion = null, previousAnswer = null, previousEvaluation = null, candidateRole = 'Engineer', askedQuestionTitles = []) {
-  const activeKey = getGeminiApiKey();
-
   const prevScore = previousEvaluation?.score || 7.0;
   const isHighPerformer = prevScore >= 7.5;
   const isLowPerformer = prevScore <= 4.0;
@@ -599,51 +518,19 @@ Return ONLY this JSON:
 }
 </question_generator>`;
 
-  // 1. Query selected provider (Groq or Gemini)
-  if (getAiProvider() === 'groq' && getGroqApiKey()) {
-    try {
-      const response = await callGroqCompletions(prompt, true);
-      const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed?.title) {
-          return { id: qNum, category: parsed.category || 'AI Systems Architecture', type: 'text', title: parsed.title, hint: parsed.hint || 'Consider production trade-offs and latency metrics.' };
-        }
+  // 1. Query Groq API
+  try {
+    const content = await callGroq(prompt, { model: 'llama-3.3-70b-versatile', temperature: 0.7, isJson: true });
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.title) {
+        return { id: qNum, category: parsed.category || 'AI Systems Architecture', type: 'text', title: parsed.title, hint: parsed.hint || 'Consider production trade-offs and latency metrics.' };
       }
-    } catch (groqErr) {
-      console.warn("Groq question generation failed, falling back to Gemini:", groqErr?.message);
     }
-  }
-
-  // Gemini question generation
-  if (activeKey && activeKey.trim().length > 10) {
-    try {
-      const genAI = new GoogleGenerativeAI(activeKey.trim());
-      const candidateModels = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
-
-      for (const modelName of candidateModels) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const result = await model.generateContent(prompt);
-          const text = result?.response?.text();
-          if (text) {
-            const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              if (parsed?.title) {
-                return { id: qNum, category: parsed.category || 'AI Systems Architecture', type: 'text', title: parsed.title, hint: parsed.hint || 'Consider production trade-offs and latency metrics.' };
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(`Question gen with ${modelName} failed, trying next...`);
-        }
-      }
-    } catch (err) {
-      console.warn("Live question generation fallback:", err);
-    }
+  } catch (groqErr) {
+    console.warn("Groq question generation failed, falling back to local fallback pools:", groqErr?.message);
   }
 
   // Local fallback pools
@@ -682,46 +569,24 @@ Return ONLY this JSON:
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function askSupportBotGemini(userQuery) {
-  const activeKey = getGeminiApiKey();
-
-  const systemPrompt = `You are "Gemini Flash Support Bot", a friendly expert support AI for InterviewAgent.AI.
+  const systemPrompt = `You are "Groq Support Bot", a friendly expert support AI for InterviewAgent.AI.
 
 User Question: "${userQuery}"
 
 Instructions:
 1. Provide a concise response (max 2 short paragraphs).
-2. If asked about provider / keys: Gemini 2.5 is pre-integrated. Groq can be selected on the login page by inputting a Groq API key.
-3. Interviews are open-ended scenarios (8–20 questions) with live feedback and timer.`;
+2. The AI Evaluator engine is powered exclusively by Groq Llama 3.3.
+3. Interviews feature open-ended adaptive scenarios (8–20 questions) with live feedback and timer.`;
 
-  // 1. Query selected provider (Groq or Gemini)
-  if (getAiProvider() === 'groq' && getGroqApiKey()) {
-    try {
-      const response = await callGroqCompletions(systemPrompt, false);
-      if (response?.trim()) return response.trim();
-    } catch (e) {
-      console.warn("Groq support bot failed, falling back to Gemini:", e?.message);
-    }
-  }
-
-  // Gemini support bot
-  if (activeKey) {
-    const genAI = new GoogleGenerativeAI(activeKey);
-    const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-    for (const modelName of models) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(systemPrompt);
-        const text = result?.response?.text();
-        if (text?.trim()) return text.trim();
-      } catch (err) {
-        console.warn(`Support bot with ${modelName} failed:`, err?.message);
-      }
-    }
+  try {
+    const content = await callGroq(systemPrompt, { model: 'llama-3.3-70b-versatile', temperature: 0.7, isJson: false });
+    if (content?.trim()) return content.trim();
+  } catch (e) {
+    console.warn("Groq support bot failed:", e?.message);
   }
 
   const q = (userQuery || '').toLowerCase();
-  if (q.includes('key') || q.includes('api')) return "🔑 **API Configurations**: Gemini 2.5 is pre-integrated. You can also select the Groq AI engine on the Candidate Login screen by providing a custom Groq API key.";
+  if (q.includes('key') || q.includes('api')) return "🔑 **API Configurations**: The system is fully powered by Groq Llama 3.3. The API key is pre-configured in the environment.";
   if (q.includes('format') || q.includes('question')) return "⚡ **Interview Format**: Adaptive scenarios covering RAG, Vector DBs, MCP, Agents, LoRA. 8–20 questions, live feedback, question timer, skip & review!";
-  return "👋 **Welcome to InterviewAgent.AI!** Powered by Llama 3.3 and Gemini 2.5. Click **Candidate Login** to begin your technical assessment!";
+  return "👋 **Welcome to InterviewAgent.AI!** Powered by Llama 3.3. Click **Candidate Login** to begin your technical assessment!";
 }

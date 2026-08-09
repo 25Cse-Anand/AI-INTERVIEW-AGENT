@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, User, Sparkles, CheckCircle2, ArrowRight, Brain, Target, Shield, HelpCircle, Layers, AlertCircle, RefreshCw, Award, Check, X, ChevronRight, Zap, AlertTriangle, RotateCcw, XCircle, SkipForward, FileQuestion, FastForward } from 'lucide-react';
-import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport, getAiProvider } from '../services/geminiService';
+import { evaluateAnswerAndGetNextQuestion, generateAdaptiveQuestion, generateFinalReport } from '../services/geminiService';
 
 const LEVELS = [
   {
@@ -162,7 +162,7 @@ export default function DynamicInterview({ user, onComplete }) {
     setStage('questioning');
   };
 
-  // Submit Answer & Evaluate live with Gemini API
+  // Submit Answer & Evaluate live with Groq API
   const handleSubmitAnswer = async () => {
     if (!textAnswer.trim() || isEvaluating) return;
     const answerPayload = textAnswer.trim();
@@ -310,7 +310,7 @@ export default function DynamicInterview({ user, onComplete }) {
     const allReportEvaluations = [...validEvals, ...unattemptedSkippedEvals].sort((a, b) => a.questionNumber - b.questionNumber);
 
     try {
-      // 🤖 Gemini AI analyzes all Q&A pairs to compile the final report
+      // 🤖 Groq AI analyzes all Q&A pairs to compile the final report
       const aiReport = await generateFinalReport({
         candidateName: user.name,
         userLevel,
@@ -418,11 +418,11 @@ export default function DynamicInterview({ user, onComplete }) {
             <Bot size={20} className="text-cyan" />
             <span className="font-bold">InterviewAgent.AI</span>
             <span className="di-badge-live" style={{
-              backgroundColor: getAiProvider() === 'groq' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(0, 242, 254, 0.15)',
-              color: getAiProvider() === 'groq' ? '#FBBF24' : '#00F2FE',
-              borderColor: getAiProvider() === 'groq' ? 'rgba(234, 179, 8, 0.3)' : 'rgba(0, 242, 254, 0.3)'
+              backgroundColor: 'rgba(234, 179, 8, 0.15)',
+              color: '#FBBF24',
+              borderColor: 'rgba(234, 179, 8, 0.3)'
             }}>
-              ● {getAiProvider() === 'groq' ? 'GROQ LLAMA 3 ACTIVE' : 'GEMINI 2.5 ACTIVE'}
+              ● GROQ LLAMA 3 ACTIVE
             </span>
           </div>
 
@@ -469,7 +469,7 @@ export default function DynamicInterview({ user, onComplete }) {
             </h1>
 
             <p className="di-greeting-subtitle">
-              Welcome to your technical interview session! I will be your Senior AI Engineering Interviewer powered by <strong className="text-cyan">Gemini 3.5 Flash Lite</strong>.
+              Welcome to your technical interview session! I will be your Senior AI Engineering Interviewer powered by <strong className="text-cyan">Groq Llama 3.3</strong>.
             </p>
 
             <div className="di-feature-grid">
@@ -491,7 +491,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 <Zap className="text-emerald" size={20} />
                 <div>
                   <h4>Step-by-Step Live Feedback</h4>
-                  <p>Get instant Gemini evaluation & live question timers during your interview.</p>
+                  <p>Get instant Groq evaluation & live question timers during your interview.</p>
                 </div>
               </div>
             </div>
@@ -637,7 +637,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 <span className="word-count wc-valid font-mono">
                   ✍️ {wordCount} words typed · No word limit
                 </span>
-                <span className="text-xs text-dim">Evaluated live by Gemini 3.5 Flash Lite</span>
+                <span className="text-xs text-dim">Evaluated live by Groq Llama 3.3</span>
               </div>
             </div>
 
@@ -711,7 +711,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 </button>
               </div>
             ) : (
-              /* REGULAR GEMINI STEP-BY-STEP EVALUATION DISPLAY */
+              /* REGULAR GROQ STEP-BY-STEP EVALUATION DISPLAY */
               <div className="di-eval-content">
                 <div className="di-eval-top">
                   <div className="di-eval-badge-group">
@@ -723,7 +723,7 @@ export default function DynamicInterview({ user, onComplete }) {
                     </span>
                   </div>
 
-                  <h3 className="di-eval-feedback-title">Step-by-Step Gemini Evaluation</h3>
+                  <h3 className="di-eval-feedback-title">Step-by-Step Groq Evaluation</h3>
                   <p className="di-eval-feedback-text">{lastEvaluation.feedback}</p>
                 </div>
 
@@ -803,7 +803,7 @@ export default function DynamicInterview({ user, onComplete }) {
           </div>
         )}
 
-        {/* ── Gemini AI Report Generation Loading Screen ── */}
+        {/* ── Groq AI Report Generation Loading Screen ── */}
         {stage === 'generating_report' && (
           <div className="di-card animate-fade-in" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
             <div style={{ marginBottom: '2rem' }}>
@@ -818,7 +818,7 @@ export default function DynamicInterview({ user, onComplete }) {
                 <Brain size={36} style={{ color: '#F59E0B' }} />
               </div>
               <h2 style={{ color: '#FDFBF7', fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem' }}>
-                🤖 Gemini AI is Analyzing Your Interview
+                🤖 Groq AI is Analyzing Your Interview
               </h2>
               <p style={{ color: '#D1C4B9', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 2rem', lineHeight: 1.6 }}>
                 Reviewing all your answers, verifying technical accuracy, computing competency scores, and generating your personalized structured report...

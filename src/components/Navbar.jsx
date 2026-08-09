@@ -1,11 +1,9 @@
 import React from 'react';
 import { Bot, Code2, RotateCcw, UserCheck, ShieldCheck } from 'lucide-react';
-import { getAiProvider } from '../services/geminiService';
-
 export default function Navbar({ activeCandidate, onOpenCandidateModal, onOpenApiModal, onResetSession, currentPhase, isComplete }) {
-  const activeEngine = getAiProvider() === 'groq' ? '⚡ Groq Llama 3' : '♊ Gemini 2.5';
-  const engineColor = getAiProvider() === 'groq' ? '#FBBF24' : '#22D3EE';
-  const dotColor = getAiProvider() === 'groq' ? '#EAB308' : '#06B6D4';
+  const activeEngine = '⚡ Groq Llama 3';
+  const engineColor = '#FBBF24';
+  const dotColor = '#EAB308';
 
   return (
     <header className="navbar">
