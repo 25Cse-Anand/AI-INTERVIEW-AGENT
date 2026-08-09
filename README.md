@@ -1,10 +1,10 @@
-# 🤖 InterviewAgent.AI — Enterprise SaaS Landing Page & AI Technical Interviewer
+# InterviewAgent.AI — Enterprise SaaS Landing Page & AI Technical Interviewer
 
 A high-converting SaaS landing page and dynamic technical interviewing platform powered by **Gemini 3.5 / 2.0 Flash Lite API** built for 31-Day Enterprise AI Engineering Cohorts.
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 - **High-Converting SaaS Landing Page (`LandingPage.jsx`)**:
   - Sticky glassmorphism header with glowing brand logo and navigation links.
@@ -24,15 +24,15 @@ A high-converting SaaS landing page and dynamic technical interviewing platform 
   - Warm greeting & self-assessed level picker (**Beginner**, **Intermediate**, **Advanced**, **Expert**).
   - Customizable target interview length slider (10 to 20 questions).
   - Single-question interactive view alternating between **MCQs** and **Open-Ended Text** scenarios.
-  - **Skip Question ⏭️ Privilege**: Skip questions anytime and review leftover questions one-by-one at the end.
+  - **Skip Question Privilege**: Skip questions anytime and review leftover questions one-by-one at the end.
   - **Step-by-Step Gemini 3.5 / 2.0 Evaluation**:
-    - **MCQs**: Evaluated live for correctness (✅ Correct / ❌ Incorrect) with concise technical explanations (no numerical ratings).
+    - **MCQs**: Evaluated live for correctness (Correct / Incorrect) with concise technical explanations (no numerical ratings).
     - **Text Answers**: Deeply verified by Gemini Flash Lite. Foolish or wrong answers receive a strict **1.0 or 2.0 out of 10** rating.
   - **Senseless & Off-Topic Guardrail**: Detects random gibberish/nonsense, flags it with a warning screen, and prompts the user to re-answer correctly.
 
 ---
 
-## 📁 Updated Repository File Structure
+## Updated Repository File Structure
 
 ```
 ai-interview-agent/
@@ -64,7 +64,7 @@ ai-interview-agent/
 
 ---
 
-## 🚀 Quick Start (Local Setup)
+## Quick Start (Local Setup)
 
 ```bash
 # 1. Clone your repository
@@ -82,7 +82,7 @@ Open `http://localhost:3000/` in your browser.
 
 ---
 
-## 🛠️ Push to GitHub (Commands)
+## Push to GitHub (Commands)
 
 ```bash
 cd C:\Users\HP\.gemini\antigravity\scratch\ai-interview-agent
@@ -97,5 +97,5 @@ git push -u origin main
 
 ---
 
-## 📜 License
+## License
 MIT License. Built for the 31-Day Enterprise AI Engineering Cohort.
