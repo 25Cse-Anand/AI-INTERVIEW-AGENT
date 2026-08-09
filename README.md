@@ -1,9 +1,3 @@
-# 🤖 AI-INTERVIEW-AGENT
-
-> **AI-powered personalized technical interview platform**
-
-[![AI-INTERVIEW-AGENT Demo](https://img.youtube.com/vi/YH21yye-NU0/maxresdefault.jpg)](https://youtu.be/YH21yye-NU0)
-
 ### 🎥 Watch the Demo
 
 **[▶️ Watch the Full Project Demo](https://youtu.be/YH21yye-NU0)**
